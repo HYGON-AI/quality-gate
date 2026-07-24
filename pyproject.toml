@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hygon-quality-gate"
+version = "1.0.0"
+description = "Incremental quality, security, and open-source compliance gate for pull requests"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Hygon Information Technology Co., Ltd." },
+]
+requires-python = ">=3.9"
+dependencies = ["PyYAML>=5.4"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/HYGON-AI/quality-gate"
+Repository = "https://github.com/HYGON-AI/quality-gate"
+Issues = "https://github.com/HYGON-AI/quality-gate/issues"
+
+[project.scripts]
+hygon-pr-gate = "hygon_pr_gate.audit_pr:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

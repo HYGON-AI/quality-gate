@@ -1,0 +1,70 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+rules:
+  - id: hygon.python.subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: subprocess 使用 shell=True，外部输入可能形成命令注入。
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: hygon.python.requests-verify-false
+    languages: [python]
+    severity: ERROR
+    message: HTTP 请求关闭了 TLS 证书校验。
+    pattern-either:
+      - pattern: requests.$METHOD(..., verify=False, ...)
+      - pattern: $SESSION.$METHOD(..., verify=False, ...)
+
+  - id: hygon.python.dynamic-eval
+    languages: [python]
+    severity: WARNING
+    message: eval/exec 会执行动态内容，需要确认输入完全可信。
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: exec(...)
+
+  - id: hygon.python.os-system
+    languages: [python]
+    severity: WARNING
+    message: os.system 通过 Shell 执行命令，需要核对命令来源。
+    pattern: os.system(...)
+
+  - id: hygon.python.unsafe-yaml-load
+    languages: [python]
+    severity: ERROR
+    message: yaml.load 未明确使用 SafeLoader，可能构造任意 Python 对象。
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=SafeLoader, ...)
+
+  - id: hygon.python.pickle-deserialization
+    languages: [python]
+    severity: WARNING
+    message: pickle 反序列化不可信内容可能导致代码执行。
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+
+  - id: hygon.python.tempfile-mktemp
+    languages: [python]
+    severity: WARNING
+    message: tempfile.mktemp 存在竞态条件，应使用安全的临时文件 API。
+    pattern: tempfile.mktemp(...)
+
+  - id: hygon.javascript.child-process-exec
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: child_process.exec 通过 Shell 执行命令，需要核对参数来源。
+    pattern-either:
+      - pattern: child_process.exec(...)
+      - pattern: $CP.exec(...)
+
+  - id: hygon.c.system-call
+    languages: [c, cpp]
+    severity: WARNING
+    message: system/popen 会启动 Shell，需要核对命令是否可被外部输入影响。
+    pattern-either:
+      - pattern: system(...)
+      - pattern: popen(...)

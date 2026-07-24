@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+self-hosted-runner:
+  labels:
+    - quality
+paths:
+  .github/workflows/pr-quality-gate.yml:
+    ignore:
+      # GitHub exposes these reusable-workflow fields, but actionlint v1.7.12
+      # does not recognize them yet. Keep the exception limited to this file
+      # and these two exact properties so all other expression errors remain.
+      - 'property "workflow_(repository|sha)" is not defined in object type'

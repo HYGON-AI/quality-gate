@@ -1,0 +1,23 @@
+# Local credentials and environment
+.env
+.env.*
+.secrets/
+*.pat
+*.local.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store

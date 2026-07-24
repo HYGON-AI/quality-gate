@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+# Copy this file to .github/workflows/quality-gate.yml in the business repository.
+# Replace the placeholder below with the reviewed full SHA of HYGON-AI/quality-gate.
+name: Quality Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+      - "release/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Checks
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@QUALITY_GATE_FULL_COMMIT_SHA
+    permissions:
+      contents: read

@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+schema_version: 1
+policy_id: forbidden-identities-v1
+case_sensitive: false
+forbidden_patterns:
+  - "s[u]gon"
+  - "r[o]gon"
+allowed_terms:
+  - hygon
+scan_targets:
+  file_paths: true
+  file_contents: true
+  commit_author_name: true
+  commit_author_email: true
+  commit_committer_name: true
+  commit_committer_email: true
+  commit_subject: true
+  commit_body: true

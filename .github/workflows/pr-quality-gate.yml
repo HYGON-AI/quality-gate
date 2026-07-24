@@ -1,0 +1,177 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: Quality Gate
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels:
+        description: JSON array of labels for the isolated quality runner.
+        required: false
+        type: string
+        default: '["self-hosted","linux","x64","quality"]'
+
+permissions:
+  contents: read
+
+jobs:
+  incremental_check:
+    name: ${{ matrix.display_name }}
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - check_id: identity-commit-check
+            display_name: Commit Identity
+            scanners: identity
+
+          - check_id: git-encoding-check
+            display_name: File Integrity
+            scanners: git-encoding
+
+          - check_id: syntax-workflow-check
+            display_name: Workflow Integrity
+            scanners: syntax-workflow
+
+          - check_id: license-third-party-check
+            display_name: License Compliance
+            scanners: compliance
+
+          - check_id: gitleaks-secret-check
+            display_name: Secret Detection
+            scanners: gitleaks
+
+          - check_id: semgrep-security-check
+            display_name: Code Security
+            scanners: semgrep
+
+          - check_id: quality-lint-check
+            display_name: Code Quality
+            scanners: ruff,quality-tools
+
+          - check_id: trivy-vulnerability-check
+            display_name: Dependency Security
+            scanners: trivy
+
+    steps:
+      - name: checkout-pr-head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: target
+
+      # job.workflow_repository and job.workflow_sha identify the exact
+      # reusable workflow selected by the caller. The engine and workflow
+      # therefore always come from the same reviewed Commit.
+      - name: checkout-quality-gate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: quality-gate
+
+      - name: quality-gate-engine
+        id: quality_gate
+        uses: ./quality-gate
+
+      - name: ${{ matrix.display_name }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          CHECK_NAME: ${{ matrix.check_id }}
+          CHECK_DISPLAY_NAME: ${{ matrix.display_name }}
+          CHECK_SCANNERS: ${{ matrix.scanners }}
+          QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}
+          HYGON_PYTHON: ${{ steps.quality_gate.outputs.python-path }}
+          TRIVY_CACHE_PATH: ${{ vars.HYGON_TRIVY_CACHE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$GITHUB_EVENT_NAME" = "pull_request"
+          git -C target cat-file -e "${BASE_SHA}^{commit}"
+          git -C target cat-file -e "${HEAD_SHA}^{commit}"
+          test "$(git -C target rev-parse "${HEAD_SHA}^{commit}")" = "$HEAD_SHA"
+
+          summary="$RUNNER_TEMP/${CHECK_NAME}.md"
+          if test -n "$TRIVY_CACHE_PATH"; then
+            export HYGON_TRIVY_CACHE="$TRIVY_CACHE_PATH"
+          fi
+
+          set +e
+          PYTHONPATH="$QUALITY_GATE_ROOT/src" \
+            "$HYGON_PYTHON" -m hygon_pr_gate \
+              --repo "$GITHUB_WORKSPACE/target" \
+              --repository "$TARGET_REPOSITORY" \
+              --base "$BASE_SHA" \
+              --head "$HEAD_SHA" \
+              --policy-root "$QUALITY_GATE_ROOT/policies" \
+              --checks "$CHECK_SCANNERS" \
+              --display-name "$CHECK_DISPLAY_NAME" \
+              --summary "$summary"
+          result=$?
+          set -e
+
+          if test -f "$summary"; then
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# ${CHECK_NAME}"
+              echo ""
+              echo "Invalid scan: no result summary was generated."
+            } >> "$GITHUB_STEP_SUMMARY"
+            result=1
+          fi
+
+          exit "$result"
+
+  hygon-pr-gate-result-check:
+    name: Quality Gate Result
+    needs: incremental_check
+    if: ${{ always() }}
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 5
+
+    steps:
+      - name: result
+        env:
+          CHECKS_RESULT: ${{ needs.incremental_check.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "# Quality Gate Result · PR 门禁汇总"
+            echo ""
+            echo "| Check Group / 检查组 | Status / 状态 |"
+            echo "| --- | --- |"
+            if test "$CHECKS_RESULT" = "success"; then
+              display_result="Passed / 通过"
+            else
+              display_result="Failed / 未通过"
+            fi
+            echo "| Incremental Checks / 增量检查 | $display_result |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if test "$CHECKS_RESULT" != "success"; then
+            echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ **Merge Blocked / 阻断合并**：at least one check failed or produced an invalid result / 至少一项检查失败或扫描无效。" \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ **Merge Allowed / 允许合并**：all checks passed / 所有检查均已通过。" >> "$GITHUB_STEP_SUMMARY"

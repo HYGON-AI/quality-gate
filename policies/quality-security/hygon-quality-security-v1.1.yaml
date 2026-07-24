@@ -1,0 +1,90 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+schema_version: 1
+policy_id: hygon-quality-security-v1.1
+version: "1.1.0"
+
+# Only scanner policy consumed by the incremental PR gate is public here.
+# Whole-repository inventory, origin classification, and audit-report policy
+# remain in the private audit system.
+scanners:
+  gitleaks:
+    enabled: true
+    finding_level: blocker
+    placeholder_filter:
+      enabled: true
+      documentation_extensions:
+        - .md
+        - .mdx
+        - .rst
+        - .adoc
+      example_path_segments:
+        - doc
+        - docs
+        - example
+        - examples
+        - sample
+        - samples
+        - fixture
+        - fixtures
+        - test
+        - tests
+      literal_patterns:
+        - '(?i)^(?:your|example|sample|dummy|fake|test|demo|placeholder|replace[-_]?me|changeme)[-_.]?(?:api[-_]?key|access[-_]?token|auth[-_]?token|token|key|secret|password)?$'
+        - '(?i)^(?:admin|worker|master|router|server|client|global|sglang|access|public)[-_](?:api[-_]?key|access[-_]?token|token|key|secret|password)$'
+        - '(?i)^(?:api[-_]?key|access[-_]?token|auth[-_]?token|token|secret|password)[-_](?:example|sample|dummy|fake|test|demo|placeholder)$'
+        - '(?i)^(?:sk|pk)[-_](?:example|sample|test|dummy|placeholder)$'
+        - '(?i)^(?:secret|password|token|api[-_]?key|access[-_]?token)[-_](?:key|token|value|example|placeholder)$'
+      safe_marker_rule_ids:
+        - private-key
+        - private-key-pem
+      safe_marker_line_patterns:
+        - '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
+
+  trivy:
+    enabled: true
+    block_fixable_severities:
+      - CRITICAL
+    review_fixable_severities:
+      - HIGH
+    review_unfixed_severities:
+      - CRITICAL
+      - HIGH
+
+  semgrep:
+    enabled: true
+    block_rule_ids: []
+    advisory_rule_ids:
+      - hygon.python.tempfile-mktemp
+    block_severities: []
+    review_severities:
+      - ERROR
+      - WARNING
+
+  ruff:
+    enabled: true
+    select: E9,F63,F7,F82
+    block_code_patterns:
+      - '^E9'
+      - '^F7'
+      - '^F823$'
+    review_code_patterns:
+      - '^F63'
+      - '^F821$'
+      - '^F822$'
+      - '^F82'
+    default_level: review
+
+  quality_tools:
+    enabled: true
+    shellcheck: true
+    actionlint: true
+    yamllint: true
+    lizard: advisory
+
+images:
+  gitleaks: zricethezav/gitleaks@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4
+  trivy: aquasec/trivy@sha256:6fb0646988fcd2fdf7bf123f7174945ebc2c9c72d1fa1567c8d7daeeb70f8037
+  semgrep: docker.xuanyuan.run/semgrep/semgrep@sha256:16783c52158c4c874576f53579b42b3e793210546e2dfac4c5e49e18038ac383
+  ruff: ghcr.io/astral-sh/ruff@sha256:5bf3adee1d6552bf4dc8381391f0a68827effae9d277c54d6b8c1aa564c7915a
+  quality_tools: hygon-quality-tools:1.0.0

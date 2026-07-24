@@ -1,0 +1,63 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+schema_version: 1
+policy_id: hygon-open-source-v1.4
+version: "1.4.0"
+company:
+  legal_name: Hygon Information Technology Co., Ltd.
+  copyright_year: 2026
+allowed_licenses:
+  - MIT
+  - BSD-3-Clause
+  - Apache-2.0
+license_admission:
+  # 只有以下三种许可证可以由扫描器自动批准。
+  approved:
+    - MIT
+    - BSD-3-Clause
+    - Apache-2.0
+  # 其他单一许可证和复合表达式不是自动判定为“不合规代码”，
+  # 但在法务/合规批准前仍阻断发布。
+  legal_review:
+    - "*"
+  forbidden: []
+source_files:
+  header_scan_lines: 100
+  extensions:
+    - .bzl
+    - .c
+    - .cc
+    - .cmake
+    - .cpp
+    - .cu
+    - .cuh
+    - .cxx
+    - .go
+    - .h
+    - .hh
+    - .hip
+    - .hpp
+    - .hxx
+    - .java
+    - .js
+    - .jsx
+    - .kt
+    - .m
+    - .metal
+    - .mm
+    - .ps1
+    - .py
+    - .pyi
+    - .rs
+    - .sh
+    - .ts
+    - .tsx
+  names:
+    - CMakeLists.txt
+    - Dockerfile
+    - Makefile
+copyright:
+  preserve_original: true
+brand_identity:
+  enabled: true
+  ruleset: forbidden-identities-v1

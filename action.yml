@@ -1,0 +1,35 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: HYGON Quality Gate Engine
+description: Locate the immutable incremental PR gate checked out by the reusable workflow.
+
+outputs:
+  gate-path:
+    description: Absolute path to the checked-out quality gate.
+    value: ${{ steps.locate.outputs.gate-path }}
+  python-path:
+    description: Python 3.9+ interpreter with PyYAML available on the runner.
+    value: ${{ steps.locate.outputs.python-path }}
+
+runs:
+  using: composite
+  steps:
+    - id: locate
+      name: Locate immutable quality gate
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f "$GITHUB_ACTION_PATH/pyproject.toml"
+        test -d "$GITHUB_ACTION_PATH/src/hygon_pr_gate"
+        test -d "$GITHUB_ACTION_PATH/policies"
+        HYGON_PYTHON=""
+        for candidate in python3.12 python3.11 python3.10 python3.9; do
+          if command -v "$candidate" >/dev/null 2>&1 \
+            && "$candidate" -c 'import sys, yaml; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)'; then
+            HYGON_PYTHON=$(command -v "$candidate")
+            break
+          fi
+        done
+        test -n "$HYGON_PYTHON"
+        echo "gate-path=$GITHUB_ACTION_PATH" >> "$GITHUB_OUTPUT"
+        echo "python-path=$HYGON_PYTHON" >> "$GITHUB_OUTPUT"
