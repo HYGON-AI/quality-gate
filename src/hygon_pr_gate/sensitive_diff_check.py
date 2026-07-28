@@ -137,6 +137,34 @@ def _token_spans(value: str) -> Iterable[Tuple[str, int, int]]:
             cursor = part_end
 
 
+def _candidate_token_spans(
+    value: str, terms: Sequence[str]
+) -> Iterable[Tuple[str, int, int]]:
+    seen: Set[Tuple[int, int]] = set()
+    for token, start, end in _token_spans(value):
+        seen.add((start, end))
+        yield token, start, end
+
+    uppercase_terms = {term.upper() for term in terms if term}
+    for word in WORD_RE.finditer(value):
+        raw = word.group(0)
+        for term in uppercase_terms:
+            cursor = 0
+            while True:
+                index = raw.find(term, cursor)
+                if index < 0:
+                    break
+                end = index + len(term)
+                previous = raw[index - 1] if index else ""
+                if (not previous or not previous.isupper()) and (
+                    word.start() + index,
+                    word.start() + end,
+                ) not in seen:
+                    seen.add((word.start() + index, word.start() + end))
+                    yield term, word.start() + index, word.start() + end
+                cursor = index + 1
+
+
 def _covered(start: int, end: int, spans: Sequence[Tuple[int, int]]) -> bool:
     return any(span_start <= start and end <= span_end for span_start, span_end in spans)
 
@@ -152,12 +180,16 @@ def _term_matches(
     value: str,
     terms: Sequence[str],
     *,
-    ignore_urls: bool = False,
+    allowed_url_patterns: Sequence[re.Pattern] = (),
     allowed_identifiers: Sequence[str] = (),
     allowed_patterns: Sequence[re.Pattern] = (),
 ) -> List[Tuple[str, int, int]]:
     expected = {term.lower() for term in terms}
-    url_spans = [(match.start(), match.end()) for match in URL_RE.finditer(value)]
+    allowed_url_spans = [
+        (match.start(), match.end())
+        for match in URL_RE.finditer(value)
+        if any(pattern.fullmatch(match.group(0)) for pattern in allowed_url_patterns)
+    ]
     allowed_spans: List[Tuple[int, int]] = []
     for pattern in allowed_patterns:
         allowed_spans.extend(
@@ -165,10 +197,10 @@ def _term_matches(
         )
     allowed_names = {name.lower() for name in allowed_identifiers}
     result = []
-    for token, start, end in _token_spans(value):
+    for token, start, end in _candidate_token_spans(value, terms):
         if token.lower() not in expected:
             continue
-        if ignore_urls and _covered(start, end, url_spans):
+        if _covered(start, end, allowed_url_spans):
             continue
         if _covered(start, end, allowed_spans):
             continue
@@ -241,6 +273,12 @@ def _node_mentions_hcu(node: ast.AST, markers: Sequence[str]) -> bool:
         elif isinstance(child, ast.Attribute):
             if child.attr.lower() in marker_names or _has_hcu_token(child.attr):
                 return True
+        elif (
+            isinstance(child, ast.Constant)
+            and isinstance(child.value, str)
+            and _has_hcu_token(child.value)
+        ):
+            return True
     return False
 
 
@@ -279,6 +317,14 @@ def _hcu_truth_states(
                 if right.value:
                     return false_states, true_states, True
                 return true_states, false_states, True
+        comparison_mentions_hcu = _node_mentions_hcu(
+            node.left, markers
+        ) or _node_mentions_hcu(right, markers)
+        if comparison_mentions_hcu:
+            if isinstance(node.ops[0], (ast.Eq, ast.Is, ast.In)):
+                return {True}, {False}, True
+            if isinstance(node.ops[0], (ast.NotEq, ast.IsNot, ast.NotIn)):
+                return {False}, {True}, True
     if _node_mentions_hcu(node, markers):
         return {True}, {False}, True
     return {False, True}, {False, True}, False
@@ -418,18 +464,139 @@ def _python_runtime_matches(
     return visitor.matches
 
 
-def _near_hcu_condition(lines: Sequence[str], index: int, markers: Sequence[str]) -> bool:
+def _text_hcu_branches(
+    value: str, markers: Sequence[str]
+) -> Optional[Tuple[bool, bool]]:
+    lowered = value.lower()
     marker_values = [marker.lower() for marker in markers]
+    if not any(marker in lowered for marker in marker_values) and not _has_hcu_token(
+        value
+    ):
+        return None
+
+    negated = bool(
+        re.search(r"(?:!\s*|\bnot\s+)(?:[a-z_][a-z0-9_.]*hcu)", lowered)
+        or re.search(r"!=\s*['\"]?hcu\b", lowered)
+        or re.search(r"\bnot\s+in\b.*['\"]hcu['\"]", lowered)
+    )
+    if "||" in value:
+        return (True, True) if negated else (True, False)
+    if "&&" in value:
+        return (False, True) if negated else (True, True)
+    return (False, True) if negated else (True, False)
+
+
+def _near_hcu_condition(
+    lines: Sequence[str], index: int, markers: Sequence[str]
+) -> Optional[bool]:
     for previous in range(index, max(-1, index - 20), -1):
-        value = lines[previous].lower()
-        if any(marker in value for marker in marker_values):
-            return True
-        if previous != index and value.strip() in {"else", "else:", "fi", "}"}:
+        value = lines[previous]
+        branches = _text_hcu_branches(value, markers)
+        if branches is not None:
+            return branches[0]
+        if previous != index and value.strip().lower() in {
+            "else",
+            "else:",
+            "fi",
+            "}",
+        }:
             break
-    return False
+    return None
+
+
+def _shell_hcu_contexts(
+    lines: Sequence[str], path_owned: bool, markers: Sequence[str]
+) -> List[bool]:
+    contexts: List[bool] = []
+    stack: List[Dict[str, bool]] = []
+    current_possible = True
+    current_owned = path_owned
+    for line in lines:
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if re.match(r"^if\b", lowered):
+            branches = _text_hcu_branches(stripped, markers)
+            then_possible = (
+                current_possible
+                if branches is None
+                else current_possible and branches[0]
+            )
+            remaining_possible = (
+                current_possible
+                if branches is None
+                else current_possible and branches[1]
+            )
+            then_owned = current_owned or (branches is not None and then_possible)
+            remaining_owned = current_owned or (
+                branches is not None and remaining_possible
+            )
+            stack.append(
+                {
+                    "parent_possible": current_possible,
+                    "parent_owned": current_owned,
+                    "remaining_possible": remaining_possible,
+                    "remaining_owned": remaining_owned,
+                }
+            )
+            current_possible = then_possible
+            current_owned = then_owned
+        elif re.match(r"^elif\b", lowered) and stack:
+            branches = _text_hcu_branches(stripped, markers)
+            remaining_possible = stack[-1]["remaining_possible"]
+            remaining_owned = stack[-1]["remaining_owned"]
+            current_possible = (
+                remaining_possible
+                if branches is None
+                else remaining_possible and branches[0]
+            )
+            current_owned = remaining_owned or (
+                branches is not None and current_possible
+            )
+            stack[-1]["remaining_possible"] = (
+                remaining_possible
+                if branches is None
+                else remaining_possible and branches[1]
+            )
+            stack[-1]["remaining_owned"] = remaining_owned or (
+                branches is not None and stack[-1]["remaining_possible"]
+            )
+        elif re.match(r"^else\b", lowered) and stack:
+            current_possible = stack[-1]["remaining_possible"]
+            current_owned = stack[-1]["remaining_owned"]
+
+        contexts.append(current_possible and current_owned)
+
+        if re.match(r"^fi\b", lowered) and stack:
+            frame = stack.pop()
+            current_possible = frame["parent_possible"]
+            current_owned = frame["parent_owned"]
+    return contexts
+
+
+def _output_windows(lines: Sequence[str]) -> Iterable[Tuple[int, int]]:
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.lstrip()
+        if (
+            not stripped
+            or stripped.startswith(("#", "//", "/*", "*"))
+            or not VISIBLE_TEXT_RE.search(line)
+        ):
+            index += 1
+            continue
+
+        end = index
+        balance = line.count("(") - line.count(")")
+        while balance > 0 and end + 1 < len(lines) and end - index < 50:
+            end += 1
+            balance += lines[end].count("(") - lines[end].count(")")
+        yield index, end
+        index = end + 1
 
 
 def _text_runtime_matches(
+    path: str,
     lines: Sequence[str],
     *,
     path_owned: bool,
@@ -439,22 +606,34 @@ def _text_runtime_matches(
     allowed_patterns: Sequence[re.Pattern],
 ) -> List[Tuple[int, str, str, str]]:
     result = []
-    for number, line in enumerate(lines, 1):
-        if number not in added_lines:
+    suffix = PurePosixPath(path).suffix.lower()
+    shell_contexts = (
+        _shell_hcu_contexts(lines, path_owned, markers)
+        if suffix in {".bash", ".ksh", ".sh", ".zsh"}
+        else None
+    )
+    for start, end in _output_windows(lines):
+        if shell_contexts is not None:
+            hcu_context = shell_contexts[start]
+        else:
+            nearby_context = _near_hcu_condition(lines, start, markers)
+            hcu_context = path_owned if nearby_context is None else nearby_context
+        if not hcu_context:
             continue
-        stripped = line.lstrip()
-        if not stripped or stripped.startswith(("#", "//", "/*", "*")):
-            continue
-        if not VISIBLE_TEXT_RE.search(line):
-            continue
-        if not path_owned and not _near_hcu_condition(lines, number - 1, markers):
-            continue
-        for term, _, _ in _term_matches(
-            line,
-            runtime_terms,
-            allowed_patterns=allowed_patterns,
-        ):
-            result.append((number, "visible output", term, line))
+        for index in range(start, end + 1):
+            number = index + 1
+            if number not in added_lines:
+                continue
+            line = lines[index]
+            stripped = line.lstrip()
+            if not stripped or stripped.startswith(("#", "//", "/*", "*")):
+                continue
+            for term, _, _ in _term_matches(
+                line,
+                runtime_terms,
+                allowed_patterns=allowed_patterns,
+            ):
+                result.append((number, "visible output", term, line))
     return result
 
 
@@ -508,7 +687,19 @@ def scan_sensitive_diff(
             "profile legacy_dcu.allowed_identifiers",
         ),
     )
-    ignore_urls = bool(legacy.get("ignore_urls", True))
+    allowed_url_patterns = _compile_patterns(
+        _merge_strings(
+            _as_strings(
+                legacy.get("allowed_url_patterns"),
+                "legacy_dcu.allowed_url_patterns",
+            ),
+            _as_strings(
+                profile_legacy.get("allowed_url_patterns"),
+                "profile legacy_dcu.allowed_url_patterns",
+            ),
+        ),
+        "legacy_dcu.allowed_url_patterns",
+    )
 
     hcu_owned_paths = _merge_strings(
         _as_strings(runtime.get("hcu_owned_paths"), "hcu_runtime.hcu_owned_paths"),
@@ -610,7 +801,7 @@ def scan_sensitive_diff(
                 for term, _, _ in _term_matches(
                     line,
                     legacy_terms,
-                    ignore_urls=ignore_urls,
+                    allowed_url_patterns=allowed_url_patterns,
                     allowed_identifiers=allowed_identifiers,
                 ):
                     add_finding(
@@ -640,6 +831,7 @@ def scan_sensitive_diff(
             )
         else:
             runtime_matches = _text_runtime_matches(
+                path,
                 lines,
                 path_owned=path_owned,
                 added_lines=added_lines,

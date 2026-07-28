@@ -264,7 +264,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "DCUTLASS_ENABLE_TENSOR_CORE_MMA = True\n"
         "class EAGLEDraftExtendCudaGraphRunner:\n"
         "    pass\n"
-        "EXTERNAL = 'https://example.invalid/dcu/reference'\n"
+        "EXTERNAL = 'https://harbor.sourcefind.cn:5443/dcu/approved/image'\n"
         "CPU_VENDOR = 'amd64'\n"
         "AMDGPU_TARGETS = 'gfx'\n"
         "HSA_XGMI_LINK = 1\n"
@@ -293,10 +293,12 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "is_{}=1\n".format(SENSITIVE_DEVICE)
         + "register_{}_ci=1\n".format(SENSITIVE_DEVICE)
         + "registerDcuCi=1\n"
+        + "DCUMLABackend = object()\n"
         + "BACKEND='HWBackend.{}'\n".format(SENSITIVE_DEVICE.upper())
         + "SGLANG_{}_ENABLE=1\n".format(SENSITIVE_DEVICE.upper())
         + "IMAGE='{}_CI_IMAGE'\n".format(SENSITIVE_DEVICE.upper())
-        + "echo '{} device'\n".format(SENSITIVE_DEVICE.upper()),
+        + "echo '{} device'\n".format(SENSITIVE_DEVICE.upper())
+        + "EXTERNAL='https://example.invalid/dcu/dev'\n",
     )
     run(["git", "mv", "src/rename_source.py", "src/dcu_utils.py"], repo)
     run(["git", "add", sensitive_path], repo)
@@ -310,6 +312,8 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     content = summary.read_text(encoding="utf-8")
     assert "Changed destination path contains a legacy DCU token" in content
     assert "Added content contains a legacy DCU token" in content
+    assert "DCUMLABackend" in content
+    assert "example.invalid/dcu/dev" in content
     assert "SENSITIVE_DIFF.LEGACY_DCU_PATH" not in content
 
     # AMD/XGMI are blocked only in an HCU-owned user-visible output sink.
@@ -341,9 +345,38 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "else:\n"
         "    logger.warning('{} fallback path')\n".format(
             SENSITIVE_VENDOR.upper()
+        )
+        + "if backend == 'hcu':\n"
+        "    logger.info('{} GPU with {} from string condition')\n".format(
+            SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
         ),
     )
-    run(["git", "add", hcu_path, "python/sglang/srt/generic_runtime.py"], repo)
+    write(
+        repo / "src" / "hcu" / "runtime.cpp",
+        "TORCH_WARN(\n"
+        '    "{} GPU with {} from multiline call");\n'.format(
+            SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
+        ),
+    )
+    write(
+        repo / "scripts" / "runtime.sh",
+        "if is_hcu; then\n"
+        "    echo '{} GPU with {} from shell branch'\n".format(
+            SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
+        )
+        + "fi\n",
+    )
+    run(
+        [
+            "git",
+            "add",
+            hcu_path,
+            "python/sglang/srt/generic_runtime.py",
+            "src/hcu/runtime.cpp",
+            "scripts/runtime.sh",
+        ],
+        repo,
+    )
     run(["git", "commit", "-q", "-m", "test(gate): add HCU runtime wording"], repo)
     runtime_head = run(["git", "rev-parse", "HEAD"], repo)
     runtime_args = arguments(
@@ -358,6 +391,9 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     assert "info()" in content
     assert "error()" in content
     assert "fallback path" in content
+    assert "string condition" in content
+    assert "multiline call" in content
+    assert "shell branch" in content
     assert "compatibility path" not in content
 
     # Identifiers and comments are not user-visible sinks. AMD paths are also
@@ -380,12 +416,19 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "else:\n"
         "    logger.info('AMD GPU compatibility path')\n",
     )
+    write(
+        repo / "scripts" / "non_hcu_runtime.sh",
+        "if ! is_hcu; then\n"
+        "    echo 'AMD GPU with XGMI from non-HCU shell branch'\n"
+        "fi\n",
+    )
     run(
         [
             "git",
             "add",
             "test/registered/amd/compatibility.py",
             "python/sglang/srt/hcu/identifiers.py",
+            "scripts/non_hcu_runtime.sh",
         ],
         repo,
     )

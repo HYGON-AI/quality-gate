@@ -52,7 +52,7 @@ sensitive_diff:
   legacy_dcu:
     terms:
       - dcu
-    ignore_urls: true
+    allowed_url_patterns: []
     allowed_identifiers:
       - DCUTLASS_ENABLE_TENSOR_CORE_MMA
     excluded_paths: []
