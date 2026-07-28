@@ -18,6 +18,8 @@ sensitive_diff:
     excluded_paths: []
     allowed_identifiers:
       - DCUTLASS_ENABLE_TENSOR_CORE_MMA
+    allowed_identifier_patterns:
+      - '^DCUTLASS_[A-Z0-9_]+$'
     allowed_url_patterns:
       - '^https://harbor\.sourcefind\.cn:5443/dcu(?:/.*)?$'
   hcu_runtime:

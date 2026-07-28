@@ -55,6 +55,7 @@ sensitive_diff:
     allowed_url_patterns: []
     allowed_identifiers:
       - DCUTLASS_ENABLE_TENSOR_CORE_MMA
+    allowed_identifier_patterns: []
     excluded_paths: []
   hcu_runtime:
     terms:

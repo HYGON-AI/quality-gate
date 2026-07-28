@@ -262,6 +262,12 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     write(
         repo / "src" / "qwamdd" / "uidcui.py",
         "DCUTLASS_ENABLE_TENSOR_CORE_MMA = True\n"
+        "DCUTLASS_DEBUG_TRACE_LEVEL = 0\n"
+        "DCUTLASS_ENABLE_GDC_FOR_SM100 = True\n"
+        "DCUTLASS_ENABLE_GDC_FOR_SM90 = True\n"
+        "DCUTLASS_TEST_ENABLE_CACHED_RESULTS = True\n"
+        "DCUTLASS_TEST_LEVEL = 0\n"
+        "DCUTLASS_VERSIONS_GENERATED = True\n"
         "class EAGLEDraftExtendCudaGraphRunner:\n"
         "    pass\n"
         "EXTERNAL = 'https://harbor.sourcefind.cn:5443/dcu/approved/image'\n"
@@ -349,6 +355,16 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         + "if backend == 'hcu':\n"
         "    logger.info('{} GPU with {} from string condition')\n".format(
             SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
+        )
+        + "if is_hcu():\n"
+        "    log_info_on_rank0('{} GPU with {} from rank0 logger')\n".format(
+            SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
+        )
+        + "    log_warning_on_rank0('{} GPU from rank0 warning')\n".format(
+            SENSITIVE_VENDOR.upper()
+        )
+        + "    log_error_on_rank0('{} from rank0 error')\n".format(
+            SENSITIVE_LINK.upper()
         ),
     )
     write(
@@ -356,7 +372,21 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "TORCH_WARN(\n"
         '    "{} GPU with {} from multiline call");\n'.format(
             SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
-        ),
+        )
+        + "std::cerr\n"
+        '    << "{} from stream output" << std::endl;\n'.format(
+            SENSITIVE_LINK.upper()
+        )
+        + 'LOG(INFO) << "{} GPU from LOG call";\n'.format(
+            SENSITIVE_VENDOR.upper()
+        )
+        + 'SPDLOG_WARN("{} GPU from spdlog");\n'.format(
+            SENSITIVE_VENDOR.upper()
+        )
+        + 'fprintf(stderr, "{} GPU from fprintf");\n'.format(
+            SENSITIVE_VENDOR.upper()
+        )
+        + 'puts("{} GPU from puts");\n'.format(SENSITIVE_VENDOR.upper()),
     )
     write(
         repo / "scripts" / "runtime.sh",
@@ -366,6 +396,15 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         )
         + "fi\n",
     )
+    write(
+        repo / "src" / "generic_runtime.cpp",
+        "if (is_hcu()) {\n"
+        '    std::cout << "AMD GPU from HCU C++ branch" << std::endl;\n'
+        "}\n"
+        "if (!is_hcu()) {\n"
+        '    std::cout << "AMD GPU from non-HCU C++ branch" << std::endl;\n'
+        "}\n",
+    )
     run(
         [
             "git",
@@ -373,6 +412,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
             hcu_path,
             "python/sglang/srt/generic_runtime.py",
             "src/hcu/runtime.cpp",
+            "src/generic_runtime.cpp",
             "scripts/runtime.sh",
         ],
         repo,
@@ -392,8 +432,18 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     assert "error()" in content
     assert "fallback path" in content
     assert "string condition" in content
+    assert "rank0 logger" in content
+    assert "rank0 warning" in content
+    assert "rank0 error" in content
     assert "multiline call" in content
+    assert "stream output" in content
+    assert "LOG call" in content
+    assert "spdlog" in content
+    assert "fprintf" in content
+    assert "puts" in content
     assert "shell branch" in content
+    assert "HCU C++ branch" in content
+    assert "non-HCU C++ branch" not in content
     assert "compatibility path" not in content
 
     # Identifiers and comments are not user-visible sinks. AMD paths are also
@@ -422,6 +472,15 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "    echo 'AMD GPU with XGMI from non-HCU shell branch'\n"
         "fi\n",
     )
+    write(
+        repo / "src" / "generic_comment.cpp",
+        "/*\n"
+        "if (is_hcu()) {\n"
+        "*/\n"
+        "// if (is_hcu()) {\n"
+        'const char* url = "https://example.invalid/is_hcu/path";\n'
+        'LOG_INFO("AMD GPU from comment-only HCU marker");\n',
+    )
     run(
         [
             "git",
@@ -429,6 +488,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
             "test/registered/amd/compatibility.py",
             "python/sglang/srt/hcu/identifiers.py",
             "scripts/non_hcu_runtime.sh",
+            "src/generic_comment.cpp",
         ],
         repo,
     )

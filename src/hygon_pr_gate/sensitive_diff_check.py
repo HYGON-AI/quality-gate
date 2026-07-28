@@ -20,11 +20,18 @@ URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
 CAMEL_BOUNDARY_RE = re.compile(
     r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])"
 )
+CONDITION_LINE_RE = re.compile(
+    r"^\s*(?:(?:if|elif|else\s+if|while)\b|#\s*(?:if|ifdef|ifndef|elif)\b)",
+    re.IGNORECASE,
+)
 VISIBLE_TEXT_RE = re.compile(
     r"(?:"
     r"\b(?:echo|printf|print|raise|throw|description|help|message|status)\b"
     r"|(?:logger|logging)\s*\."
-    r"|\b(?:LOG_[A-Z0-9_]+|TORCH_CHECK|TORCH_WARN|WARN|ERROR)\s*\("
+    r"|\b(?:fprintf|fputs|puts)\s*\("
+    r"|\b(?:LOG(?:_[A-Z0-9_]+)?|SPDLOG_[A-Z0-9_]+|"
+    r"TORCH_CHECK|TORCH_WARN|WARN|ERROR)\s*\("
+    r"|\bstd::(?:cerr|cout|clog)\b"
     r")",
     re.IGNORECASE,
 )
@@ -47,6 +54,9 @@ VISIBLE_METHODS = {
     "exception",
     "info",
     "log",
+    "log_error_on_rank0",
+    "log_info_on_rank0",
+    "log_warning_on_rank0",
     "print",
     "skip",
     "warn",
@@ -182,6 +192,7 @@ def _term_matches(
     *,
     allowed_url_patterns: Sequence[re.Pattern] = (),
     allowed_identifiers: Sequence[str] = (),
+    allowed_identifier_patterns: Sequence[re.Pattern] = (),
     allowed_patterns: Sequence[re.Pattern] = (),
 ) -> List[Tuple[str, int, int]]:
     expected = {term.lower() for term in terms}
@@ -207,15 +218,21 @@ def _term_matches(
         identifier = _containing_identifier(value, start, end)
         if identifier and identifier.lower() in allowed_names:
             continue
+        if identifier and any(
+            pattern.fullmatch(identifier) for pattern in allowed_identifier_patterns
+        ):
+            continue
         result.append((token, start, end))
     return result
 
 
-def _compile_patterns(values: Sequence[str], label: str) -> List[re.Pattern]:
+def _compile_patterns(
+    values: Sequence[str], label: str, flags: int = re.IGNORECASE
+) -> List[re.Pattern]:
     result = []
     for value in values:
         try:
-            result.append(re.compile(value, re.IGNORECASE))
+            result.append(re.compile(value, flags))
         except re.error as error:
             raise ValueError("{} contains invalid regex {!r}: {}".format(label, value, error))
     return result
@@ -491,9 +508,12 @@ def _near_hcu_condition(
 ) -> Optional[bool]:
     for previous in range(index, max(-1, index - 20), -1):
         value = lines[previous]
-        branches = _text_hcu_branches(value, markers)
-        if branches is not None:
-            return branches[0]
+        if value.lstrip().startswith(("//", "/*", "*")):
+            continue
+        if CONDITION_LINE_RE.search(value):
+            branches = _text_hcu_branches(value, markers)
+            if branches is not None:
+                return branches[0]
         if previous != index and value.strip().lower() in {
             "else",
             "else:",
@@ -502,6 +522,48 @@ def _near_hcu_condition(
         }:
             break
     return None
+
+
+def _without_c_comments(lines: Sequence[str]) -> List[str]:
+    result: List[str] = []
+    in_block = False
+    for line in lines:
+        visible: List[str] = []
+        quote = ""
+        escaped = False
+        index = 0
+        while index < len(line):
+            pair = line[index : index + 2]
+            char = line[index]
+            if in_block:
+                if pair == "*/":
+                    in_block = False
+                    index += 2
+                else:
+                    index += 1
+                continue
+            if quote:
+                visible.append(char)
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = ""
+                index += 1
+                continue
+            if pair == "//":
+                break
+            if pair == "/*":
+                in_block = True
+                index += 2
+                continue
+            if char in {"'", '"'}:
+                quote = char
+            visible.append(char)
+            index += 1
+        result.append("".join(visible))
+    return result
 
 
 def _shell_hcu_contexts(
@@ -588,7 +650,14 @@ def _output_windows(lines: Sequence[str]) -> Iterable[Tuple[int, int]]:
 
         end = index
         balance = line.count("(") - line.count(")")
-        while balance > 0 and end + 1 < len(lines) and end - index < 50:
+        stream_output = bool(
+            re.search(r"\bstd::(?:cerr|cout|clog)\b", line, re.IGNORECASE)
+        )
+        while (
+            (balance > 0 or (stream_output and ";" not in lines[end]))
+            and end + 1 < len(lines)
+            and end - index < 50
+        ):
             end += 1
             balance += lines[end].count("(") - lines[end].count(")")
         yield index, end
@@ -612,11 +681,12 @@ def _text_runtime_matches(
         if suffix in {".bash", ".ksh", ".sh", ".zsh"}
         else None
     )
+    condition_lines = lines if shell_contexts is not None else _without_c_comments(lines)
     for start, end in _output_windows(lines):
         if shell_contexts is not None:
             hcu_context = shell_contexts[start]
         else:
-            nearby_context = _near_hcu_condition(lines, start, markers)
+            nearby_context = _near_hcu_condition(condition_lines, start, markers)
             hcu_context = path_owned if nearby_context is None else nearby_context
         if not hcu_context:
             continue
@@ -686,6 +756,20 @@ def scan_sensitive_diff(
             profile_legacy.get("allowed_identifiers"),
             "profile legacy_dcu.allowed_identifiers",
         ),
+    )
+    allowed_identifier_patterns = _compile_patterns(
+        _merge_strings(
+            _as_strings(
+                legacy.get("allowed_identifier_patterns"),
+                "legacy_dcu.allowed_identifier_patterns",
+            ),
+            _as_strings(
+                profile_legacy.get("allowed_identifier_patterns"),
+                "profile legacy_dcu.allowed_identifier_patterns",
+            ),
+        ),
+        "legacy_dcu.allowed_identifier_patterns",
+        flags=0,
     )
     allowed_url_patterns = _compile_patterns(
         _merge_strings(
@@ -775,6 +859,7 @@ def scan_sensitive_diff(
                 path,
                 legacy_terms,
                 allowed_identifiers=allowed_identifiers,
+                allowed_identifier_patterns=allowed_identifier_patterns,
             ):
                 add_finding(
                     "SENSITIVE_DIFF.LEGACY_DCU_PATH",
@@ -803,6 +888,7 @@ def scan_sensitive_diff(
                     legacy_terms,
                     allowed_url_patterns=allowed_url_patterns,
                     allowed_identifiers=allowed_identifiers,
+                    allowed_identifier_patterns=allowed_identifier_patterns,
                 ):
                     add_finding(
                         "SENSITIVE_DIFF.LEGACY_DCU_CONTENT",
