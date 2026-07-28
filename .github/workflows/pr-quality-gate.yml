@@ -33,6 +33,10 @@ jobs:
             display_name: File Integrity
             scanners: git-encoding
 
+          - check_id: sensitive-diff-text-check
+            display_name: Sensitive Diff Text
+            scanners: sensitive-diff
+
           - check_id: syntax-workflow-check
             display_name: Workflow Integrity
             scanners: syntax-workflow

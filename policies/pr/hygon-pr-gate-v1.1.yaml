@@ -47,6 +47,14 @@ git:
   large_file_block_bytes: 52428800
   source_header_scan_lines: 100
 
+sensitive_diff:
+  enabled: true
+  case_sensitive: false
+  terms:
+    - dcu
+    - amd
+    - xgmi
+
 dependency_manifests:
   - "**/pyproject.toml"
   - "**/setup.py"

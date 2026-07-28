@@ -17,9 +17,13 @@ from hygon_pr_gate.audit_pr import run_gate
 ROOT = Path(__file__).resolve().parents[1]
 HYGON = "Copyright (c) 2026 Hygon Information Technology Co., Ltd."
 FORBIDDEN_A = "su" + "gon"
+SENSITIVE_DEVICE = "dcu"
+SENSITIVE_VENDOR = "amd"
+SENSITIVE_LINK = "xgmi"
 EXPECTED_WORKFLOW_CHECKS = {
     "identity-commit-check": "Commit Identity",
     "git-encoding-check": "File Integrity",
+    "sensitive-diff-text-check": "Sensitive Diff Text",
     "syntax-workflow-check": "Workflow Integrity",
     "license-third-party-check": "License Compliance",
     "gitleaks-secret-check": "Secret Detection",
@@ -235,6 +239,68 @@ def assert_unknown_repository_is_invalid(root: Path) -> None:
     assert "扫描无效" in summary.read_text(encoding="utf-8")
 
 
+def assert_sensitive_diff_scope(root: Path) -> None:
+    repo = root / "sensitive-diff"
+    repo.mkdir()
+    initialize(repo)
+    write(
+        repo / "legacy.py",
+        "MESSAGE = {!r}\n".format(SENSITIVE_VENDOR + " historical text"),
+    )
+    run(["git", "add", "legacy.py"], repo)
+    run(["git", "commit", "-q", "-m", "chore(test): add historical text"], repo)
+    base = run(["git", "rev-parse", "HEAD"], repo)
+
+    write(
+        repo / "legacy.py",
+        "MESSAGE = {!r}\nVALUE = 2\n".format(
+            SENSITIVE_VENDOR + " historical text"
+        ),
+    )
+    run(["git", "add", "legacy.py"], repo)
+    run(["git", "commit", "-q", "-m", "fix(test): add clean line"], repo)
+    clean_head = run(["git", "rev-parse", "HEAD"], repo)
+    clean_args = arguments(repo, base, clean_head, root / "sensitive-clean.md")
+    clean_args.checks = "sensitive-diff"
+    clean_args.display_name = "Sensitive Diff Text"
+    summary, code = run_gate(clean_args)
+    assert code == 0, summary.read_text(encoding="utf-8")
+
+    sensitive_variants = [
+        SENSITIVE_DEVICE,
+        SENSITIVE_DEVICE.upper(),
+        "D" + "cU",
+        SENSITIVE_VENDOR,
+        SENSITIVE_VENDOR.upper(),
+        "A" + "mD",
+        SENSITIVE_LINK,
+        SENSITIVE_LINK.upper(),
+        "Xg" + "Mi",
+    ]
+    sensitive_path = "src/{}/runtime.py".format(SENSITIVE_DEVICE)
+    write(
+        repo / sensitive_path,
+        "\n".join(
+            "MESSAGE_{} = {!r}".format(index, value)
+            for index, value in enumerate(sensitive_variants, 1)
+        )
+        + "\n",
+    )
+    run(["git", "add", sensitive_path], repo)
+    run(["git", "commit", "-q", "-m", "test(gate): add sensitive text"], repo)
+    head = run(["git", "rev-parse", "HEAD"], repo)
+    blocked_args = arguments(repo, clean_head, head, root / "sensitive-blocked.md")
+    blocked_args.checks = "sensitive-diff"
+    blocked_args.display_name = "Sensitive Diff Text"
+    summary, code = run_gate(blocked_args)
+    assert code == 2, summary.read_text(encoding="utf-8")
+    content = summary.read_text(encoding="utf-8")
+    assert "Changed file path contains a sensitive platform term" in content
+    assert "Added content contains a sensitive platform term" in content
+    for variant in sensitive_variants:
+        assert repr(variant) in content, variant
+
+
 def assert_shared_workflow_contract() -> None:
     workflow_path = ROOT / ".github" / "workflows" / "pr-quality-gate.yml"
     workflow_text = workflow_path.read_text(encoding="utf-8")
@@ -280,6 +346,7 @@ def main() -> None:
         assert_replacement_character_blocks(root)
         assert_existing_debt_is_not_blocked(root)
         assert_unknown_repository_is_invalid(root)
+        assert_sensitive_diff_scope(root)
     print("hygon-pr-gate self tests: OK")
 
 

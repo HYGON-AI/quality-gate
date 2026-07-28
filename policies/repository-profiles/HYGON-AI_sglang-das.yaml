@@ -10,7 +10,7 @@ checks:
   quality: true
   compliance: true
   commit_identity: true
-  hcu_runtime_wording: false
+  hcu_runtime_wording: true
 
 legal_files:
   - LICENSE

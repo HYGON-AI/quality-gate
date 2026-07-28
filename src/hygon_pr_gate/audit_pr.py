@@ -12,6 +12,7 @@ from hygon_quality_security.models import scanner_status
 
 from .git_scope import PRGitError, collect_scope
 from .local_executor import LocalDockerExecutor, LocalExecutionError
+from .sensitive_diff_check import scan_sensitive_diff
 from .native_checks import (
     scan_compliance,
     scan_git_and_encoding,
@@ -27,11 +28,13 @@ NATIVE_CHECKS = {
     "git-encoding": scan_git_and_encoding,
     "syntax-workflow": scan_syntax_and_workflows,
     "compliance": scan_compliance,
+    "sensitive-diff": scan_sensitive_diff,
 }
 EXTERNAL_CHECKS = ("gitleaks", "semgrep", "ruff", "quality-tools", "trivy")
 ALL_CHECKS = tuple(NATIVE_CHECKS) + EXTERNAL_CHECKS
 
 CHECK_DISPLAY_NAMES = {
+    "sensitive-diff": ("Sensitive Diff Text", "Sensitive Diff Text"),
     "identity": ("Commit Identity", "提交身份"),
     "git-encoding": ("File Integrity", "文件完整性"),
     "syntax-workflow": ("Workflow Integrity", "工作流完整性"),
