@@ -251,13 +251,32 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     run(["git", "commit", "-q", "-m", "chore(test): add historical text"], repo)
     base = run(["git", "rev-parse", "HEAD"], repo)
 
+    # Historical sensitive text and unrelated substrings are outside the
+    # incremental token gate.
     write(
         repo / "legacy.py",
         "MESSAGE = {!r}\nVALUE = 2\n".format(
             SENSITIVE_VENDOR + " historical text"
         ),
     )
+    write(
+        repo / "src" / "qwamdd" / "uidcui.py",
+        "DCUTLASS_ENABLE_TENSOR_CORE_MMA = True\n"
+        "class EAGLEDraftExtendCudaGraphRunner:\n"
+        "    pass\n"
+        "EXTERNAL = 'https://example.invalid/dcu/reference'\n"
+        "CPU_VENDOR = 'amd64'\n"
+        "AMDGPU_TARGETS = 'gfx'\n"
+        "HSA_XGMI_LINK = 1\n"
+        "logger.warning('FP16 params may not work on AMD CPUs')\n"
+        "DESCRIPTION = 'AMD/HIP backend compatibility'\n",
+    )
+    write(
+        repo / "src" / "rename_source.py",
+        "VALUE = 1\n",
+    )
     run(["git", "add", "legacy.py"], repo)
+    run(["git", "add", "src/qwamdd/uidcui.py", "src/rename_source.py"], repo)
     run(["git", "commit", "-q", "-m", "fix(test): add clean line"], repo)
     clean_head = run(["git", "rev-parse", "HEAD"], repo)
     clean_args = arguments(repo, base, clean_head, root / "sensitive-clean.md")
@@ -266,39 +285,119 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     summary, code = run_gate(clean_args)
     assert code == 0, summary.read_text(encoding="utf-8")
 
-    sensitive_variants = [
-        SENSITIVE_DEVICE,
-        SENSITIVE_DEVICE.upper(),
-        "D" + "cU",
-        SENSITIVE_VENDOR,
-        SENSITIVE_VENDOR.upper(),
-        "A" + "mD",
-        SENSITIVE_LINK,
-        SENSITIVE_LINK.upper(),
-        "Xg" + "Mi",
-    ]
-    sensitive_path = "src/{}/runtime.py".format(SENSITIVE_DEVICE)
+    # DCU is a repository-rename rule: exact tokens in destination paths and
+    # added content are blocked, while unrelated substrings remain allowed.
+    sensitive_path = "scripts/ci/{}/test.sh".format(SENSITIVE_DEVICE)
     write(
         repo / sensitive_path,
-        "\n".join(
-            "MESSAGE_{} = {!r}".format(index, value)
-            for index, value in enumerate(sensitive_variants, 1)
-        )
-        + "\n",
+        "is_{}=1\n".format(SENSITIVE_DEVICE)
+        + "register_{}_ci=1\n".format(SENSITIVE_DEVICE)
+        + "registerDcuCi=1\n"
+        + "BACKEND='HWBackend.{}'\n".format(SENSITIVE_DEVICE.upper())
+        + "SGLANG_{}_ENABLE=1\n".format(SENSITIVE_DEVICE.upper())
+        + "IMAGE='{}_CI_IMAGE'\n".format(SENSITIVE_DEVICE.upper())
+        + "echo '{} device'\n".format(SENSITIVE_DEVICE.upper()),
     )
+    run(["git", "mv", "src/rename_source.py", "src/dcu_utils.py"], repo)
     run(["git", "add", sensitive_path], repo)
-    run(["git", "commit", "-q", "-m", "test(gate): add sensitive text"], repo)
-    head = run(["git", "rev-parse", "HEAD"], repo)
-    blocked_args = arguments(repo, clean_head, head, root / "sensitive-blocked.md")
+    run(["git", "commit", "-q", "-m", "test(gate): add legacy device tokens"], repo)
+    dcu_head = run(["git", "rev-parse", "HEAD"], repo)
+    blocked_args = arguments(repo, clean_head, dcu_head, root / "dcu-blocked.md")
     blocked_args.checks = "sensitive-diff"
     blocked_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(blocked_args)
     assert code == 2, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
-    assert "Changed file path contains a sensitive platform term" in content
-    assert "Added content contains a sensitive platform term" in content
-    for variant in sensitive_variants:
-        assert repr(variant) in content, variant
+    assert "Changed destination path contains a legacy DCU token" in content
+    assert "Added content contains a legacy DCU token" in content
+    assert "SENSITIVE_DIFF.LEGACY_DCU_PATH" not in content
+
+    # AMD/XGMI are blocked only in an HCU-owned user-visible output sink.
+    hcu_path = "python/sglang/srt/hcu/runtime.py"
+    write(
+        repo / hcu_path,
+        "import logging\n"
+        "logger = logging.getLogger(__name__)\n"
+        "logger.info('Using {} GPU with {}')\n".format(
+            SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
+        )
+        + "logger.warning('Using AmD GPU with XgMi')\n"
+        + "STATUS = {'status': 'AMD topology unavailable'}\n",
+    )
+    write(
+        repo / "python/sglang/srt/generic_runtime.py",
+        "import logging\n"
+        "logger = logging.getLogger(__name__)\n"
+        "if is_hcu():\n"
+        "    logger.error('{} 1 hop {} detection failed')\n".format(
+            SENSITIVE_VENDOR.upper(), SENSITIVE_LINK.upper()
+        )
+        + "if not is_hcu():\n"
+        "    logger.warning('{} GPU compatibility path')\n".format(
+            SENSITIVE_VENDOR.upper()
+        )
+        + "if is_hcu() and feature_enabled:\n"
+        "    logger.info('HCU fast path')\n"
+        "else:\n"
+        "    logger.warning('{} fallback path')\n".format(
+            SENSITIVE_VENDOR.upper()
+        ),
+    )
+    run(["git", "add", hcu_path, "python/sglang/srt/generic_runtime.py"], repo)
+    run(["git", "commit", "-q", "-m", "test(gate): add HCU runtime wording"], repo)
+    runtime_head = run(["git", "rev-parse", "HEAD"], repo)
+    runtime_args = arguments(
+        repo, dcu_head, runtime_head, root / "hcu-runtime-blocked.md"
+    )
+    runtime_args.checks = "sensitive-diff"
+    runtime_args.display_name = "Sensitive Diff Text"
+    summary, code = run_gate(runtime_args)
+    assert code == 2, summary.read_text(encoding="utf-8")
+    content = summary.read_text(encoding="utf-8")
+    assert "HCU user-visible output contains AMD/XGMI wording" in content
+    assert "info()" in content
+    assert "error()" in content
+    assert "fallback path" in content
+    assert "compatibility path" not in content
+
+    # Identifiers and comments are not user-visible sinks. AMD paths are also
+    # legal because AMD does not participate in path hard blocking.
+    write(
+        repo / "test" / "registered" / "amd" / "compatibility.py",
+        "# AMD and XGMI upstream compatibility\n"
+        "AMDGPU_TARGETS = 'gfx'\n"
+        "HSA_XGMI_LINK = 1\n",
+    )
+    write(
+        repo / "python/sglang/srt/hcu/identifiers.py",
+        "# AMD and XGMI implementation notes\n"
+        "AMDGPU_TARGETS = 'gfx'\n"
+        "HSA_XGMI_LINK = 1\n"
+        "logger.warning('FP16 params may not work on AMD CPUs')\n"
+        "logger.info('HSA_XGMI_LINK is configured')\n"
+        "if is_hcu():\n"
+        "    logger.info('HCU path')\n"
+        "else:\n"
+        "    logger.info('AMD GPU compatibility path')\n",
+    )
+    run(
+        [
+            "git",
+            "add",
+            "test/registered/amd/compatibility.py",
+            "python/sglang/srt/hcu/identifiers.py",
+        ],
+        repo,
+    )
+    run(["git", "commit", "-q", "-m", "test(gate): add allowed identifiers"], repo)
+    allowed_head = run(["git", "rev-parse", "HEAD"], repo)
+    allowed_args = arguments(
+        repo, runtime_head, allowed_head, root / "hcu-runtime-allowed.md"
+    )
+    allowed_args.checks = "sensitive-diff"
+    allowed_args.display_name = "Sensitive Diff Text"
+    summary, code = run_gate(allowed_args)
+    assert code == 0, summary.read_text(encoding="utf-8")
 
 
 def assert_shared_workflow_contract() -> None:

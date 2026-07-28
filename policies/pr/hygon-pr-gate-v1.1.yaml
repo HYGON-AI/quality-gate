@@ -49,11 +49,30 @@ git:
 
 sensitive_diff:
   enabled: true
-  case_sensitive: false
-  terms:
-    - dcu
-    - amd
-    - xgmi
+  legacy_dcu:
+    terms:
+      - dcu
+    ignore_urls: true
+    allowed_identifiers:
+      - DCUTLASS_ENABLE_TENSOR_CORE_MMA
+    excluded_paths: []
+  hcu_runtime:
+    terms:
+      - amd
+      - xgmi
+    hcu_markers:
+      - is_hcu
+      - _is_hcu
+      - HCUBackend
+      - HWBackend.HCU
+    hcu_owned_paths: []
+    excluded_paths: []
+    allowed_output_patterns:
+      - '\bAMD\s+CPUs?\b'
+      - '\bAMD/HIP\s+backend\s+compatibility\b'
+      - '\bamd64\b'
+      - '\bAMDGPU_TARGETS\b'
+      - '\bHSA_XGMI_[A-Za-z0-9_]*\b'
 
 dependency_manifests:
   - "**/pyproject.toml"

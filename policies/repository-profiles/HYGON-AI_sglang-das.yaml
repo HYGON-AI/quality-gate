@@ -10,7 +10,24 @@ checks:
   quality: true
   compliance: true
   commit_identity: true
+  sensitive_diff: true
   hcu_runtime_wording: true
+
+sensitive_diff:
+  legacy_dcu:
+    excluded_paths: []
+    allowed_identifiers:
+      - DCUTLASS_ENABLE_TENSOR_CORE_MMA
+  hcu_runtime:
+    hcu_owned_paths:
+      - "**/hcu/**"
+      - "**/*_hcu.py"
+      - "**/hcu_*.py"
+      - ".github/workflows/*hcu*.yml"
+      - ".github/workflows/*hcu*.yaml"
+      - "scripts/**/*hcu*"
+    excluded_paths:
+      - "test/registered/amd/**"
 
 legal_files:
   - LICENSE
