@@ -15,8 +15,60 @@ permissions:
   contents: read
 
 jobs:
+  profile_admission:
+    name: Profile Admission
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 5
+
+    steps:
+      - name: checkout-quality-gate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: quality-gate
+
+      - name: quality-gate-engine
+        id: quality_gate
+        uses: ./quality-gate
+
+      - name: Profile Admission
+        env:
+          TARGET_REPOSITORY: ${{ github.repository }}
+          QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}
+          HYGON_PYTHON: ${{ steps.quality_gate.outputs.python-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          summary="$RUNNER_TEMP/profile-admission.md"
+          set +e
+          PYTHONPATH="$QUALITY_GATE_ROOT/src" \
+            "$HYGON_PYTHON" -m hygon_pr_gate.profile_admission \
+              --repository "$TARGET_REPOSITORY" \
+              --policy-root "$QUALITY_GATE_ROOT/policies" \
+              --summary "$summary"
+          result=$?
+          set -e
+
+          if test -f "$summary"; then
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# Profile Admission / 仓库准入"
+              echo ""
+              echo "Invalid admission: no result summary was generated."
+            } >> "$GITHUB_STEP_SUMMARY"
+            result=1
+          fi
+
+          exit "$result"
+
   incremental_check:
     name: ${{ matrix.display_name }}
+    needs: profile_admission
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 45
 
@@ -25,35 +77,19 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - check_id: identity-commit-check
-            display_name: Commit Identity
-            scanners: identity
+          - check_id: governance-compliance-check
+            display_name: Governance & Compliance
+            scanners: identity,compliance
 
-          - check_id: git-encoding-check
-            display_name: File Integrity
-            scanners: git-encoding
+          - check_id: repository-integrity-quality-check
+            display_name: Repository Integrity & Quality
+            scanners: git-encoding,syntax-workflow,ruff,quality-tools
 
-          - check_id: syntax-workflow-check
-            display_name: Workflow Integrity
-            scanners: syntax-workflow
+          - check_id: security-check
+            display_name: Security
+            scanners: gitleaks,semgrep
 
-          - check_id: license-third-party-check
-            display_name: License Compliance
-            scanners: compliance
-
-          - check_id: gitleaks-secret-check
-            display_name: Secret Detection
-            scanners: gitleaks
-
-          - check_id: semgrep-security-check
-            display_name: Code Security
-            scanners: semgrep
-
-          - check_id: quality-lint-check
-            display_name: Code Quality
-            scanners: ruff,quality-tools
-
-          - check_id: trivy-vulnerability-check
+          - check_id: dependency-security-check
             display_name: Dependency Security
             scanners: trivy
 
@@ -137,7 +173,9 @@ jobs:
 
   hygon-pr-gate-result-check:
     name: Quality Gate Result
-    needs: incremental_check
+    needs:
+      - profile_admission
+      - incremental_check
     if: ${{ always() }}
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 5
@@ -145,6 +183,7 @@ jobs:
     steps:
       - name: result
         env:
+          PROFILE_RESULT: ${{ needs.profile_admission.result }}
           CHECKS_RESULT: ${{ needs.incremental_check.result }}
         shell: bash
         run: |
@@ -155,14 +194,30 @@ jobs:
             echo ""
             echo "| Check Group / 检查组 | Status / 状态 |"
             echo "| --- | --- |"
-            if test "$CHECKS_RESULT" = "success"; then
+            if test "$PROFILE_RESULT" = "success"; then
+              profile_result="Passed / 通过"
+            else
+              profile_result="Failed / 未通过"
+            fi
+            if test "$PROFILE_RESULT" != "success"; then
+              display_result="Skipped / 未启动"
+            elif test "$CHECKS_RESULT" = "success"; then
               display_result="Passed / 通过"
             else
               display_result="Failed / 未通过"
             fi
+            echo "| Profile Admission / 仓库准入 | $profile_result |"
             echo "| Incremental Checks / 增量检查 | $display_result |"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if test "$PROFILE_RESULT" != "success"; then
+            echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ **Merge Blocked / 阻断合并**：repository profile admission failed / 仓库 Profile 准入失败；其余扫描未启动。" \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
           if test "$CHECKS_RESULT" != "success"; then
             echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"

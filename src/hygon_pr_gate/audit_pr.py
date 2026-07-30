@@ -43,6 +43,21 @@ CHECK_DISPLAY_NAMES = {
     "trivy": ("Dependency Security", "依赖安全"),
 }
 
+CHECK_GROUP_DISPLAY_NAMES = {
+    ("identity", "compliance"): (
+        "Governance & Compliance",
+        "治理与许可证合规",
+    ),
+    ("git-encoding", "syntax-workflow", "ruff", "quality-tools"): (
+        "Repository Integrity & Quality",
+        "仓库完整性与代码质量",
+    ),
+    ("gitleaks", "semgrep"): (
+        "Security",
+        "安全检查",
+    ),
+}
+
 
 def _selected_checks(value: str) -> List[str]:
     requested = [item.strip() for item in str(value or "all").split(",") if item.strip()]
@@ -57,6 +72,9 @@ def _selected_checks(value: str) -> List[str]:
 def _check_display_name(selected: List[str]) -> Tuple[str, str]:
     if selected == list(ALL_CHECKS):
         return "All Checks", "全部检查"
+    grouped = CHECK_GROUP_DISPLAY_NAMES.get(tuple(selected))
+    if grouped is not None:
+        return grouped
     labels: List[Tuple[str, str]] = []
     for name in selected:
         label = CHECK_DISPLAY_NAMES[name]

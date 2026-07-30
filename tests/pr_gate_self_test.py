@@ -5,6 +5,7 @@
 
 import argparse
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -12,20 +13,24 @@ from pathlib import Path
 import yaml
 
 from hygon_pr_gate.audit_pr import run_gate
+from hygon_pr_gate.policy import REPOSITORY_MODES
+from hygon_pr_gate.profile_admission import render_admission
 
 
 ROOT = Path(__file__).resolve().parents[1]
 HYGON = "Copyright (c) 2026 Hygon Information Technology Co., Ltd."
 FORBIDDEN_A = "su" + "gon"
 EXPECTED_WORKFLOW_CHECKS = {
-    "identity-commit-check": "Commit Identity",
-    "git-encoding-check": "File Integrity",
-    "syntax-workflow-check": "Workflow Integrity",
-    "license-third-party-check": "License Compliance",
-    "gitleaks-secret-check": "Secret Detection",
-    "semgrep-security-check": "Code Security",
-    "quality-lint-check": "Code Quality",
-    "trivy-vulnerability-check": "Dependency Security",
+    "governance-compliance-check": (
+        "Governance & Compliance",
+        "identity,compliance",
+    ),
+    "repository-integrity-quality-check": (
+        "Repository Integrity & Quality",
+        "git-encoding,syntax-workflow,ruff,quality-tools",
+    ),
+    "security-check": ("Security", "gitleaks,semgrep"),
+    "dependency-security-check": ("Dependency Security", "trivy"),
 }
 
 
@@ -68,13 +73,20 @@ def initialize(repo: Path) -> str:
     return run(["git", "rev-parse", "HEAD"], repo)
 
 
-def arguments(repo: Path, base: str, head: str, summary: Path, repository="HYGON-AI/sglang-das"):
+def arguments(
+    repo: Path,
+    base: str,
+    head: str,
+    summary: Path,
+    repository="HYGON-AI/sglang-das",
+    policy_root=ROOT / "policies",
+):
     return argparse.Namespace(
         repo=repo,
         repository=repository,
         base=base,
         head=head,
-        policy_root=ROOT / "policies",
+        policy_root=policy_root,
         summary=summary,
         native_only=True,
     )
@@ -132,13 +144,36 @@ def assert_clear_violations_block(root: Path) -> None:
         "禁止的品牌身份",
         "逃逸仓库的符号链接",
         "Python 文件存在明确语法错误",
-        "可移动 Action",
         "删除或重写了原 LICENSE",
         "删除或替换了原版权/许可证声明",
         "新增第三方源码缺少明确版权或 SPDX",
     ):
         assert marker in content, marker
     assert "本检查阻断" in content
+
+
+def assert_mutable_action_is_advisory(root: Path) -> None:
+    repo = root / "mutable-action"
+    repo.mkdir()
+    base = initialize(repo)
+    write(
+        repo / ".github/workflows/test.yml",
+        "name: test\non: [pull_request]\njobs:\n  test:\n    runs-on: self-hosted\n"
+        "    steps:\n      - uses: actions/checkout@v4\n",
+    )
+    run(["git", "add", "."], repo)
+    run(["git", "commit", "-q", "-m", "ci: add workflow"], repo)
+    head = run(["git", "rev-parse", "HEAD"], repo)
+    args = arguments(repo, base, head, root / "mutable-action.md")
+    args.checks = "git-encoding,syntax-workflow,ruff,quality-tools"
+    args.display_name = "Repository Integrity & Quality"
+    summary, code = run_gate(args)
+    assert code == 0, summary.read_text(encoding="utf-8")
+    content = summary.read_text(encoding="utf-8")
+    assert "Repository Integrity & Quality" in content
+    assert "Workflow 使用可移动 Action" in content
+    assert "Advisories / 提示问题：1" in content
+    assert "Blockers / 阻断问题：0" in content
 
 
 def assert_replacement_character_blocks(root: Path) -> None:
@@ -235,18 +270,195 @@ def assert_unknown_repository_is_invalid(root: Path) -> None:
     assert "扫描无效" in summary.read_text(encoding="utf-8")
 
 
+def write_test_profile(
+    policy_root: Path,
+    *,
+    repository: str,
+    repository_mode: str,
+    hygon_owned_paths=None,
+    upstream_paths=None,
+    patch_paths=None,
+) -> None:
+    profile = {
+        "schema_version": 1,
+        "repository": repository,
+        "repository_mode": repository_mode,
+        "policy": "hygon-pr-gate-v1.2",
+        "license": "Apache-2.0",
+        "checks": {
+            "security": True,
+            "quality": True,
+            "compliance": True,
+            "commit_identity": True,
+            "hcu_runtime_wording": False,
+        },
+        "legal_files": ["LICENSE", "NOTICE"],
+        "third_party_registries": ["THIRD_PARTY_NOTICES.md"],
+        "third_party_paths": ["third_party/vendor/**"],
+        "generated_paths": ["**/*_pb2.py"],
+        "hygon_owned_paths": hygon_owned_paths or [],
+        "upstream_paths": upstream_paths or [],
+        "patch_paths": patch_paths or [],
+    }
+    filename = repository.replace("/", "_") + ".yaml"
+    write(
+        policy_root / "repository-profiles" / filename,
+        yaml.safe_dump(profile, default_flow_style=False),
+    )
+
+
+def assert_repository_modes_drive_compliance(root: Path) -> None:
+    policy_root = root / "mode-policies"
+    shutil.copytree(ROOT / "policies", policy_root)
+
+    original_repository = "HYGON-AI/test-original"
+    write_test_profile(
+        policy_root,
+        repository=original_repository,
+        repository_mode="original",
+    )
+    original = root / "mode-original"
+    original.mkdir()
+    base = initialize(original)
+    write(original / "missing.py", "VALUE = 1\n")
+    run(["git", "add", "missing.py"], original)
+    run(["git", "commit", "-q", "-m", "feat: add original source"], original)
+    head = run(["git", "rev-parse", "HEAD"], original)
+    summary, code = run_gate(
+        arguments(
+            original,
+            base,
+            head,
+            root / "mode-original.md",
+            repository=original_repository,
+            policy_root=policy_root,
+        )
+    )
+    assert code == 2, summary.read_text(encoding="utf-8")
+    assert "HYGON 新增源码缺少完整合规文件头" in summary.read_text(
+        encoding="utf-8"
+    )
+
+    fork_repository = "HYGON-AI/test-fork"
+    write_test_profile(
+        policy_root,
+        repository=fork_repository,
+        repository_mode="fork",
+    )
+    fork = root / "mode-fork"
+    fork.mkdir()
+    base = initialize(fork)
+    write(fork / "unclassified.py", "VALUE = 1\n")
+    run(["git", "add", "unclassified.py"], fork)
+    run(["git", "commit", "-q", "-m", "feat: sync source"], fork)
+    head = run(["git", "rev-parse", "HEAD"], fork)
+    summary, code = run_gate(
+        arguments(
+            fork,
+            base,
+            head,
+            root / "mode-fork.md",
+            repository=fork_repository,
+            policy_root=policy_root,
+        )
+    )
+    assert code == 0, summary.read_text(encoding="utf-8")
+    content = summary.read_text(encoding="utf-8")
+    assert "Fork 新增源码的来源待确认" in content
+    assert "HYGON 新增源码缺少完整合规文件头" not in content
+
+    patch_repository = "HYGON-AI/test-submodule-patch"
+    write_test_profile(
+        policy_root,
+        repository=patch_repository,
+        repository_mode="submodule-patch",
+        upstream_paths=["third_party/verl/**"],
+        patch_paths=["patches/**"],
+    )
+    patch_repo = root / "mode-submodule-patch"
+    patch_repo.mkdir()
+    base = initialize(patch_repo)
+    write(patch_repo / "third_party/verl/upstream.py", "VALUE = 1\n")
+    run(["git", "add", "."], patch_repo)
+    run(["git", "commit", "-q", "-m", "chore: update upstream fixture"], patch_repo)
+    head = run(["git", "rev-parse", "HEAD"], patch_repo)
+    summary, code = run_gate(
+        arguments(
+            patch_repo,
+            base,
+            head,
+            root / "mode-submodule-patch.md",
+            repository=patch_repository,
+            policy_root=policy_root,
+        )
+    )
+    assert code == 0, summary.read_text(encoding="utf-8")
+    assert "HYGON 新增源码缺少完整合规文件头" not in summary.read_text(
+        encoding="utf-8"
+    )
+
+
+def assert_profile_admission(root: Path) -> None:
+    admitted = root / "profile-admitted.md"
+    assert (
+        render_admission(
+            repository="HYGON-AI/sglang-das",
+            summary=admitted,
+            policy_root=ROOT / "policies",
+        )
+        == 0
+    )
+    admitted_text = admitted.read_text(encoding="utf-8")
+    assert "Admitted / 已准入" in admitted_text
+    assert "Repository Mode / 仓库模式：`fork`" in admitted_text
+
+    rejected = root / "profile-rejected.md"
+    assert (
+        render_admission(
+            repository="HYGON-AI/not-registered",
+            summary=rejected,
+            policy_root=ROOT / "policies",
+        )
+        == 1
+    )
+    rejected_text = rejected.read_text(encoding="utf-8")
+    assert "Invalid / 无效" in rejected_text
+    assert "其他扫描 Job 未启动" in rejected_text
+
+
 def assert_shared_workflow_contract() -> None:
+    assert REPOSITORY_MODES == {
+        "original",
+        "fork",
+        "submodule-patch",
+        "overlay",
+    }
     workflow_path = ROOT / ".github" / "workflows" / "pr-quality-gate.yml"
     workflow_text = workflow_path.read_text(encoding="utf-8")
     workflow = yaml.safe_load(workflow_text)
     jobs = workflow["jobs"]
     matrix = jobs["incremental_check"]["strategy"]["matrix"]["include"]
-    checks = {item["check_id"]: item["display_name"] for item in matrix}
+    checks = {
+        item["check_id"]: (item["display_name"], item["scanners"])
+        for item in matrix
+    }
     assert checks == EXPECTED_WORKFLOW_CHECKS
-    assert all(not name.endswith("-check") for name in checks.values())
+    assert all(
+        not display_name.endswith("-check")
+        for display_name, _scanners in checks.values()
+    )
+    assert jobs["profile_admission"]["name"] == "Profile Admission"
+    assert jobs["incremental_check"]["needs"] == "profile_admission"
     assert jobs["hygon-pr-gate-result-check"]["name"] == "Quality Gate Result"
+    assert set(jobs["hygon-pr-gate-result-check"]["needs"]) == {
+        "profile_admission",
+        "incremental_check",
+    }
     assert "CHECK_DISPLAY_NAME: ${{ matrix.display_name }}" in workflow_text
     assert '--display-name "$CHECK_DISPLAY_NAME"' in workflow_text
+    assert "-m hygon_pr_gate.profile_admission" in workflow_text
+    assert "其余扫描未启动" in workflow_text
+    assert 'display_result="Skipped / 未启动"' in workflow_text
     assert "# Quality Gate Result · PR 门禁汇总" in workflow_text
     assert "Merge Blocked / 阻断合并" in workflow_text
     assert "Merge Allowed / 允许合并" in workflow_text
@@ -268,7 +480,7 @@ def assert_shared_workflow_contract() -> None:
     assert template["name"] == "Quality Gate"
     assert template["jobs"]["checks"]["name"] == "Checks"
     assert "HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml" in template_text
-    assert "QUALITY_GATE_FULL_COMMIT_SHA" in template_text
+    assert "QUALITY_GATE_REF" in template_text
 
 
 def main() -> None:
@@ -280,6 +492,9 @@ def main() -> None:
         assert_replacement_character_blocks(root)
         assert_existing_debt_is_not_blocked(root)
         assert_unknown_repository_is_invalid(root)
+        assert_mutable_action_is_advisory(root)
+        assert_repository_modes_drive_compliance(root)
+        assert_profile_admission(root)
     print("hygon-pr-gate self tests: OK")
 
 

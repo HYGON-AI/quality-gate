@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 repository: HYGON-AI/pytorch-das
-policy: hygon-pr-gate-v1.1
+repository_mode: fork
+policy: hygon-pr-gate-v1.2
 license: BSD-3-Clause
 
 checks:
@@ -26,3 +27,7 @@ third_party_paths:
 generated_paths:
   - "torch/version.py"
   - "**/*_pb2.py"
+
+hygon_owned_paths: []
+upstream_paths: []
+patch_paths: []

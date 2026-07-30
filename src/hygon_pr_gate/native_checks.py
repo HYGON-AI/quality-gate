@@ -401,6 +401,11 @@ def scan_syntax_and_workflows(
                         )
                     continue
                 if not PINNED_USES_RE.fullmatch(reference):
+                    mutable_is_advisory = bool(
+                        policy.get("advisory", {}).get(
+                            "mutable_action_reference", False
+                        )
+                    )
                     findings.append(
                         finding(
                             "WORKFLOW.MUTABLE_USES",
@@ -408,8 +413,12 @@ def scan_syntax_and_workflows(
                             path,
                             "Workflow 使用可移动 Action 或 reusable workflow 引用",
                             reference,
-                            "替换为组织审核通过的完整 40 位 Commit SHA。",
-                            level="blocker",
+                            (
+                                "建议固定为组织审核通过的完整 40 位 Commit SHA；当前仅提示。"
+                                if mutable_is_advisory
+                                else "替换为组织审核通过的完整 40 位 Commit SHA。"
+                            ),
+                            level="advisory" if mutable_is_advisory else "blocker",
                             line=line_number,
                         )
                     )
@@ -461,6 +470,10 @@ def scan_compliance(
     registries = [str(value) for value in profile.get("third_party_registries", [])]
     third_party_patterns = [str(value) for value in profile.get("third_party_paths", [])]
     generated_patterns = [str(value) for value in profile.get("generated_paths", [])]
+    hygon_owned_patterns = [str(value) for value in profile.get("hygon_owned_paths", [])]
+    upstream_patterns = [str(value) for value in profile.get("upstream_paths", [])]
+    patch_patterns = [str(value) for value in profile.get("patch_paths", [])]
+    repository_mode = str(profile["repository_mode"])
     header_lines = int(policy["git"]["source_header_scan_lines"])
     for legal_path in sorted(legal_files):
         base = read_blob(repo, scope["merge_base"], legal_path, 4 * 1024 * 1024)
@@ -568,8 +581,37 @@ def scan_compliance(
                 )
             )
             continue
-        third_party = matches(path, third_party_patterns) or (
+        explicitly_hygon_owned = matches(path, hygon_owned_patterns)
+        if not explicitly_hygon_owned and (
+            matches(path, upstream_patterns) or matches(path, patch_patterns)
+        ):
+            # The central, reviewed profile has already classified this path as
+            # inherited upstream material or an external patch. Do not
+            # mechanically apply a HYGON-original source header.
+            continue
+        has_non_hygon_copyright = (
             bool(COPYRIGHT_RE.search(current_header)) and HYGON_COPYRIGHT not in current_header
+        )
+        explicitly_third_party = matches(path, third_party_patterns)
+        if (
+            repository_mode == "fork"
+            and not explicitly_hygon_owned
+            and not explicitly_third_party
+        ):
+            findings.append(
+                finding(
+                    "COPYRIGHT.NEW_FORK_SOURCE_PROVENANCE_REVIEW",
+                    "compliance",
+                    path,
+                    "Fork 新增源码的来源待确认",
+                    "路径未在中央 Profile 中归类为 HYGON 原创、上游、第三方或生成文件",
+                    "确认来源后在中央 Profile 中登记对应路径；未确认前不机械添加 HYGON 文件头。",
+                    level="advisory",
+                )
+            )
+            continue
+        third_party = explicitly_third_party or (
+            has_non_hygon_copyright and not explicitly_hygon_owned
         )
         if third_party:
             if not COPYRIGHT_RE.search(current_header) or not licenses:
@@ -623,7 +665,13 @@ def scan_compliance(
                     level="blocker",
                 )
             )
-    return findings, _status("compliance", "法律文件、原声明、新增源码和第三方来源", findings)
+    return findings, _status(
+        "compliance",
+        "法律文件、原声明、新增源码和第三方来源；仓库模式 {}".format(
+            repository_mode
+        ),
+        findings,
+    )
 
 
 def run_native_checks(

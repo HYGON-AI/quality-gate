@@ -1,0 +1,76 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+schema_version: 1
+policy_id: hygon-pr-gate-v1.2
+report_language: zh-CN
+
+# The public PR gate carries only the policy fields required for incremental
+# checks. Whole-repository audit policy and audit skills remain separate.
+open_source_policy: hygon-open-source-v1.4
+quality_security_policy: hygon-quality-security-v1.1
+
+scope:
+  files: merge-base-to-head
+  commits: base-exclusive-head-inclusive
+  block_new_findings_only: true
+  retain_reports: false
+
+blocking:
+  real_secrets: true
+  forbidden_identities: true
+  dangerous_git_objects: true
+  definite_syntax_errors: true
+  # Semgrep 模式命中需要结合外部输入可达性核对，默认不单独阻断。
+  semgrep_error_rules: false
+  trivy_fixable_severities:
+    - CRITICAL
+  legal_file_or_original_header_damage: true
+  definite_new_source_or_third_party_noncompliance: true
+
+advisory:
+  trivy_severities:
+    - HIGH
+  semgrep_warning_rules: true
+  shellcheck_warning: true
+  yaml_style: true
+  crlf: true
+  large_file_review: true
+  complexity: true
+  commit_message_style: true
+  uncertain_provenance: true
+  mutable_action_reference: true
+  semgrep_rule_ids:
+    - hygon.python.subprocess-shell-true
+
+git:
+  max_text_scan_bytes: 4194304
+  large_file_review_bytes: 10485760
+  large_file_block_bytes: 52428800
+  source_header_scan_lines: 100
+
+dependency_manifests:
+  - "**/pyproject.toml"
+  - "**/setup.py"
+  - "**/setup.cfg"
+  - "**/requirements*.txt"
+  - "**/requirements*.in"
+  - "**/constraints*.txt"
+  - "**/poetry.lock"
+  - "**/Pipfile.lock"
+  - "**/uv.lock"
+  - "**/package-lock.json"
+  - "**/pnpm-lock.yaml"
+  - "**/yarn.lock"
+  - "**/go.sum"
+  - "**/Cargo.lock"
+  - "**/pom.xml"
+  - "**/build.gradle"
+  - "**/build.gradle.kts"
+
+external_scanners:
+  enabled: true
+  network: disabled
+  docker_pull: never
+  docker_cpus: 16
+  docker_memory: 32g
+  timeout_seconds: 1800

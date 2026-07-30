@@ -11,6 +11,16 @@ import yaml
 
 
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+REPOSITORY_MODES = {"original", "fork", "submodule-patch", "overlay"}
+PROFILE_PATH_LISTS = {
+    "legal_files",
+    "third_party_registries",
+    "third_party_paths",
+    "generated_paths",
+    "hygon_owned_paths",
+    "upstream_paths",
+    "patch_paths",
+}
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:
@@ -34,6 +44,23 @@ def load_policy(policy_root: Path, repository: str) -> Dict[str, Any]:
         raise ValueError("repository profile schema_version must be 1")
     if profile.get("repository") != repository:
         raise ValueError("repository profile does not match caller repository")
+    repository_mode = str(profile.get("repository_mode") or "")
+    if repository_mode not in REPOSITORY_MODES:
+        raise ValueError(
+            "repository profile repository_mode must be one of: {}".format(
+                ", ".join(sorted(REPOSITORY_MODES))
+            )
+        )
+    for field in sorted(PROFILE_PATH_LISTS):
+        values = profile.get(field, [])
+        if not isinstance(values, list) or any(
+            not isinstance(value, str) or not value.strip() for value in values
+        ):
+            raise ValueError(
+                "repository profile {} must be a list of non-empty paths".format(
+                    field
+                )
+            )
     policy_id = str(profile.get("policy") or "")
     pr_policy = load_yaml(policy_root / "pr" / "{}.yaml".format(policy_id))
     if pr_policy.get("policy_id") != policy_id:

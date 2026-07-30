@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
 repository: HYGON-AI/sglang-das
-policy: hygon-pr-gate-v1.1
+repository_mode: fork
+policy: hygon-pr-gate-v1.2
 license: Apache-2.0
 
 checks:
@@ -30,3 +31,7 @@ generated_paths:
   - "**/version.py"
   - "**/*_pb2.py"
   - "**/*_pb2_grpc.py"
+
+hygon_owned_paths: []
+upstream_paths: []
+patch_paths: []
