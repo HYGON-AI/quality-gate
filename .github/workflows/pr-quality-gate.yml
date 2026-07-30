@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   profile_admission:
-    name: Profile Admission
+    name: Repository policy
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 5
 
@@ -34,7 +34,7 @@ jobs:
         id: quality_gate
         uses: ./quality-gate
 
-      - name: Profile Admission
+      - name: Validate repository policy
         env:
           TARGET_REPOSITORY: ${{ github.repository }}
           QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}
@@ -57,7 +57,7 @@ jobs:
             cat "$summary" >> "$GITHUB_STEP_SUMMARY"
           else
             {
-              echo "# Profile Admission / 仓库准入"
+              echo "# Repository policy / 仓库策略"
               echo ""
               echo "Invalid admission: no result summary was generated."
             } >> "$GITHUB_STEP_SUMMARY"
@@ -78,19 +78,19 @@ jobs:
       matrix:
         include:
           - check_id: governance-compliance-check
-            display_name: Governance & Compliance
+            display_name: Identity, license & wording
             scanners: identity,compliance,sensitive-diff
 
           - check_id: repository-integrity-quality-check
-            display_name: Repository Integrity & Quality
+            display_name: Repository & code quality
             scanners: git-encoding,syntax-workflow,ruff,quality-tools
 
           - check_id: security-check
-            display_name: Security
+            display_name: Secrets & SAST
             scanners: gitleaks,semgrep
 
           - check_id: dependency-security-check
-            display_name: Dependency Security
+            display_name: Dependency vulnerabilities
             scanners: trivy
 
     steps:
@@ -172,7 +172,7 @@ jobs:
           exit "$result"
 
   hygon-pr-gate-result-check:
-    name: Quality Gate Result
+    name: All required checks
     needs:
       - profile_admission
       - incremental_check
@@ -190,7 +190,7 @@ jobs:
           set -euo pipefail
 
           {
-            echo "# Quality Gate Result · PR 门禁汇总"
+            echo "# All required checks · PR 门禁汇总"
             echo ""
             echo "| Check Group / 检查组 | Status / 状态 |"
             echo "| --- | --- |"
@@ -206,7 +206,7 @@ jobs:
             else
               display_result="Failed / 未通过"
             fi
-            echo "| Profile Admission / 仓库准入 | $profile_result |"
+            echo "| Repository policy / 仓库策略 | $profile_result |"
             echo "| Incremental Checks / 增量检查 | $display_result |"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"

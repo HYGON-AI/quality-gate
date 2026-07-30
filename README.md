@@ -27,12 +27,12 @@ included.
 
 | Job | Purpose / 用途 |
 | --- | --- |
-| Profile Admission | 在启动扫描前校验中央仓库 Profile；未登记时其余扫描不启动 |
-| Governance & Compliance | Commit 身份字段、法律文件、原版权声明、模式化来源，以及 PR 新增 DCU 和 HCU 运行时 AMD/XGMI 可见文本检查 |
-| Repository Integrity & Quality | 危险 Git 对象、编码、语法、Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
-| Security | Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
-| Dependency Security | 依赖清单变化时比较 Trivy base/head 结果 |
-| Quality Gate Result | 汇总前述检查并提供唯一的分支保护检查项 |
+| Repository policy | 在启动扫描前校验中央仓库 Profile；未登记时其余扫描不启动 |
+| Identity, license & wording | Commit 身份字段、法律文件、原版权声明、模式化来源，以及 PR 新增 DCU 和 HCU 运行时 AMD/XGMI 可见文本检查 |
+| Repository & code quality | 危险 Git 对象、编码、语法、Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
+| Secrets & SAST | Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
+| Dependency vulnerabilities | 依赖清单变化时比较 Trivy base/head 结果 |
+| All required checks | 汇总前述检查并提供唯一的分支保护检查项 |
 
 目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被
 报告为提示项，不阻断合并。
@@ -55,7 +55,7 @@ jobs:
 The required branch-protection check is:
 
 ```text
-Checks / Quality Gate Result
+Checks / All required checks
 ```
 
 A full Commit SHA provides stronger immutability, but it is recommended rather
@@ -100,13 +100,13 @@ Every caller must have a reviewed profile in
 `OWNER_REPOSITORY.yaml`, select `original`, `fork`, `submodule-patch`, or
 `overlay` mode, set its expected license and reviewed ownership paths, then run
 the self-tests before release. A missing or invalid profile fails only
-`Profile Admission`; the four scan groups do not start.
+`Repository policy`; the four scan groups do not start.
 
 Repositories that enable `checks.sensitive_diff` or
 `checks.hcu_runtime_wording` must also declare reviewed HCU-owned paths and
 precise external-contract exceptions under `sensitive_diff`. Exceptions are
 limited to verified identifiers, regular expressions, URLs, or content
-patterns; malformed configuration is rejected by `Profile Admission`.
+patterns; malformed configuration is rejected by `Repository policy`.
 
 ## Development
 

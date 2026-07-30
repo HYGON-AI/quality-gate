@@ -18,7 +18,7 @@ def render_admission(
     policy_root: Path,
 ) -> int:
     lines = [
-        "# Profile Admission / 仓库准入",
+        "# Repository policy / 仓库策略",
         "",
         "- Repository / 仓库：`{}`".format(repository),
     ]

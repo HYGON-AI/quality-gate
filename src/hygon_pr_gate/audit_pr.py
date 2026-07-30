@@ -43,20 +43,20 @@ CHECK_DISPLAY_NAMES = {
     "semgrep": ("Code Security", "代码安全"),
     "ruff": ("Code Quality", "代码质量"),
     "quality-tools": ("Code Quality", "代码质量"),
-    "trivy": ("Dependency Security", "依赖安全"),
+    "trivy": ("Dependency vulnerabilities", "依赖漏洞"),
 }
 
 CHECK_GROUP_DISPLAY_NAMES = {
     ("identity", "compliance", "sensitive-diff"): (
-        "Governance & Compliance",
+        "Identity, license & wording",
         "治理与许可证合规",
     ),
     ("git-encoding", "syntax-workflow", "ruff", "quality-tools"): (
-        "Repository Integrity & Quality",
+        "Repository & code quality",
         "仓库完整性与代码质量",
     ),
     ("gitleaks", "semgrep"): (
-        "Security",
+        "Secrets & SAST",
         "安全检查",
     ),
 }

@@ -25,15 +25,15 @@ SENSITIVE_VENDOR = "amd"
 SENSITIVE_LINK = "xgmi"
 EXPECTED_WORKFLOW_CHECKS = {
     "governance-compliance-check": (
-        "Governance & Compliance",
+        "Identity, license & wording",
         "identity,compliance,sensitive-diff",
     ),
     "repository-integrity-quality-check": (
-        "Repository Integrity & Quality",
+        "Repository & code quality",
         "git-encoding,syntax-workflow,ruff,quality-tools",
     ),
-    "security-check": ("Security", "gitleaks,semgrep"),
-    "dependency-security-check": ("Dependency Security", "trivy"),
+    "security-check": ("Secrets & SAST", "gitleaks,semgrep"),
+    "dependency-security-check": ("Dependency vulnerabilities", "trivy"),
 }
 
 
@@ -169,11 +169,11 @@ def assert_mutable_action_is_advisory(root: Path) -> None:
     head = run(["git", "rev-parse", "HEAD"], repo)
     args = arguments(repo, base, head, root / "mutable-action.md")
     args.checks = "git-encoding,syntax-workflow,ruff,quality-tools"
-    args.display_name = "Repository Integrity & Quality"
+    args.display_name = "Repository & code quality"
     summary, code = run_gate(args)
     assert code == 0, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
-    assert "Repository Integrity & Quality" in content
+    assert "Repository & code quality" in content
     assert "Workflow 使用可移动 Action" in content
     assert "Advisories / 提示问题：1" in content
     assert "Blockers / 阻断问题：0" in content
@@ -795,9 +795,9 @@ def assert_shared_workflow_contract() -> None:
         not display_name.endswith("-check")
         for display_name, _scanners in checks.values()
     )
-    assert jobs["profile_admission"]["name"] == "Profile Admission"
+    assert jobs["profile_admission"]["name"] == "Repository policy"
     assert jobs["incremental_check"]["needs"] == "profile_admission"
-    assert jobs["hygon-pr-gate-result-check"]["name"] == "Quality Gate Result"
+    assert jobs["hygon-pr-gate-result-check"]["name"] == "All required checks"
     assert set(jobs["hygon-pr-gate-result-check"]["needs"]) == {
         "profile_admission",
         "incremental_check",
@@ -807,7 +807,7 @@ def assert_shared_workflow_contract() -> None:
     assert "-m hygon_pr_gate.profile_admission" in workflow_text
     assert "其余扫描未启动" in workflow_text
     assert 'display_result="Skipped / 未启动"' in workflow_text
-    assert "# Quality Gate Result · PR 门禁汇总" in workflow_text
+    assert "# All required checks · PR 门禁汇总" in workflow_text
     assert "Merge Blocked / 阻断合并" in workflow_text
     assert "Merge Allowed / 允许合并" in workflow_text
     assert "HYGON-AI/open-source-governance" not in workflow_text
