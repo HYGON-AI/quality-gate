@@ -21,6 +21,30 @@ PROFILE_PATH_LISTS = {
     "upstream_paths",
     "patch_paths",
 }
+SENSITIVE_LIST_FIELDS = {
+    "legacy_dcu": {
+        "terms",
+        "excluded_paths",
+        "allowed_identifiers",
+        "allowed_identifier_patterns",
+        "allowed_url_patterns",
+        "allowed_content_patterns",
+    },
+    "hcu_runtime": {
+        "terms",
+        "hcu_markers",
+        "non_hcu_markers",
+        "hcu_owned_paths",
+        "excluded_paths",
+        "allowed_output_patterns",
+    },
+}
+SENSITIVE_REGEX_FIELDS = {
+    ("legacy_dcu", "allowed_identifier_patterns"),
+    ("legacy_dcu", "allowed_url_patterns"),
+    ("legacy_dcu", "allowed_content_patterns"),
+    ("hcu_runtime", "allowed_output_patterns"),
+}
 
 
 def load_yaml(path: Path) -> Dict[str, Any]:
@@ -36,6 +60,105 @@ def _profile_name(repository: str) -> str:
     if not REPOSITORY_RE.fullmatch(repository):
         raise ValueError("repository must use OWNER/REPOSITORY format")
     return repository.replace("/", "_") + ".yaml"
+
+
+def _mapping(value: Any, label: str) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("{} must be a mapping".format(label))
+    return value
+
+
+def _string_list(
+    mapping: Dict[str, Any],
+    field: str,
+    label: str,
+    *,
+    required: bool = False,
+) -> list:
+    value = mapping.get(field)
+    if value is None and not required:
+        return []
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item.strip() for item in value
+    ):
+        raise ValueError("{} must be a list of non-empty strings".format(label))
+    if required and not value:
+        raise ValueError("{} must not be empty".format(label))
+    return value
+
+
+def _validate_sensitive_diff(
+    pr_policy: Dict[str, Any],
+    profile: Dict[str, Any],
+) -> None:
+    checks = _mapping(profile.get("checks"), "repository profile checks")
+    for name in ("sensitive_diff", "hcu_runtime_wording"):
+        if name in checks and not isinstance(checks[name], bool):
+            raise ValueError(
+                "repository profile checks.{} must be a boolean".format(name)
+            )
+    if not (
+        checks.get("sensitive_diff") is True
+        or checks.get("hcu_runtime_wording") is True
+    ):
+        return
+
+    config = _mapping(pr_policy.get("sensitive_diff"), "PR policy sensitive_diff")
+    if config.get("enabled") is not True:
+        raise ValueError("PR policy sensitive_diff must be enabled")
+    profile_config = _mapping(
+        profile.get("sensitive_diff"),
+        "repository profile sensitive_diff",
+    )
+
+    merged_patterns = {}
+    for section, fields in SENSITIVE_LIST_FIELDS.items():
+        central = _mapping(
+            config.get(section),
+            "PR policy sensitive_diff.{}".format(section),
+        )
+        override = _mapping(
+            profile_config.get(section),
+            "repository profile sensitive_diff.{}".format(section),
+        )
+        for field in sorted(fields):
+            required = (
+                (section, field)
+                in {
+                    ("legacy_dcu", "terms"),
+                    ("hcu_runtime", "terms"),
+                    ("hcu_runtime", "hcu_markers"),
+                }
+            )
+            central_values = _string_list(
+                central,
+                field,
+                "PR policy sensitive_diff.{}.{}".format(section, field),
+                required=required,
+            )
+            override_values = _string_list(
+                override,
+                field,
+                "repository profile sensitive_diff.{}.{}".format(section, field),
+            )
+            if (section, field) in SENSITIVE_REGEX_FIELDS:
+                merged_patterns[(section, field)] = central_values + override_values
+
+    for (section, field), patterns in merged_patterns.items():
+        for pattern in patterns:
+            try:
+                re.compile(pattern)
+            except re.error as error:
+                raise ValueError(
+                    "sensitive_diff.{}.{} contains invalid regex {!r}: {}".format(
+                        section,
+                        field,
+                        pattern,
+                        error,
+                    )
+                )
 
 
 def load_policy(policy_root: Path, repository: str) -> Dict[str, Any]:
@@ -94,6 +217,7 @@ def load_policy(policy_root: Path, repository: str) -> Dict[str, Any]:
     for required in ("security", "quality", "compliance", "commit_identity"):
         if checks.get(required) is not True:
             raise ValueError("repository profile may not disable required check: {}".format(required))
+    _validate_sensitive_diff(pr_policy, profile)
     result = deepcopy(pr_policy)
     result["profile"] = profile
     result["quality_security"] = quality

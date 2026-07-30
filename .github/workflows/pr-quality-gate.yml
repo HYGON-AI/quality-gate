@@ -79,7 +79,7 @@ jobs:
         include:
           - check_id: governance-compliance-check
             display_name: Governance & Compliance
-            scanners: identity,compliance
+            scanners: identity,compliance,sensitive-diff
 
           - check_id: repository-integrity-quality-check
             display_name: Repository Integrity & Quality
