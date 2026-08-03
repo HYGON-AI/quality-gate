@@ -57,6 +57,11 @@ The required branch-protection check is:
 Checks / All required checks
 ```
 
+Each scan group writes the complete report to both the expanded job log and
+the GitHub Job Summary. Blockers and advisories are also emitted as escaped
+file/line annotations, so developers can locate findings without leaving the
+job page.
+
 A full Commit SHA provides stronger immutability, but it is recommended rather
 than required. A reviewed release tag may be used when centralized version
 upgrades are preferred.

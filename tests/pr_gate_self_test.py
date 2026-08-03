@@ -12,7 +12,10 @@ from pathlib import Path
 
 import yaml
 
-from hygon_pr_gate.audit_pr import run_gate
+from hygon_pr_gate.audit_pr import _github_annotation, run_gate
+from hygon_quality_security.secret_placeholders import (
+    deterministic_placeholder_reason,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -252,6 +255,101 @@ def assert_existing_debt_is_not_blocked(root: Path) -> None:
     assert "未自动准入或复合许可证" not in content
 
 
+def assert_legal_file_additions_preserve_content(root: Path) -> None:
+    repo = root / "legal-additions"
+    repo.mkdir()
+    base = initialize(repo)
+    write(
+        repo / "NOTICE",
+        "Inserted attribution before\n"
+        "Original upstream notice\n"
+        "Inserted attribution after\n",
+    )
+    run(["git", "add", "NOTICE"], repo)
+    run(["git", "commit", "-q", "-m", "docs: add scoped attribution"], repo)
+    preserved_head = run(["git", "rev-parse", "HEAD"], repo)
+    args = arguments(repo, base, preserved_head, root / "legal-additions.md")
+    args.checks = "compliance"
+    args.display_name = "License Compliance"
+    summary, code = run_gate(args)
+    assert code == 0, summary.read_text(encoding="utf-8")
+
+    write(repo / "NOTICE", "Inserted attribution only\n")
+    run(["git", "add", "NOTICE"], repo)
+    run(["git", "commit", "-q", "-m", "test: remove original notice"], repo)
+    removed_head = run(["git", "rev-parse", "HEAD"], repo)
+    args = arguments(repo, base, removed_head, root / "legal-removal.md")
+    args.checks = "compliance"
+    args.display_name = "License Compliance"
+    summary, code = run_gate(args)
+    assert code == 2, summary.read_text(encoding="utf-8")
+    assert "PR 删除或重写了原 NOTICE 内容" in summary.read_text(encoding="utf-8")
+
+
+def assert_non_secret_model_key_is_ignored(root: Path) -> None:
+    repo = root / "non-secret-model-key"
+    repo.mkdir()
+    initialize(repo)
+    path = "tests/hcu/test_report.py"
+    write(
+        repo / path,
+        "write_result(\n"
+        "    model_key=\"bw1100_gsm8k_hcu\",\n"
+        "    api_key=\"opaque-nonplaceholder-value-123456\",\n"
+        ")\n",
+    )
+    run(["git", "add", path], repo)
+    run(["git", "commit", "-q", "-m", "test: add report identifiers"], repo)
+    head = run(["git", "rev-parse", "HEAD"], repo)
+    policy = yaml.safe_load(
+        (
+            ROOT
+            / "policies/quality-security/hygon-quality-security-v1.1.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    config = policy["scanners"]["gitleaks"]["placeholder_filter"]
+    common = {
+        "Commit": head,
+        "File": path,
+        "RuleID": "generic-api-key",
+    }
+    assert (
+        deterministic_placeholder_reason(
+            dict(common, StartLine=2),
+            source_repo=repo,
+            target_commit=head,
+            config=config,
+        )
+        == "non-secret-assignment"
+    )
+    assert (
+        deterministic_placeholder_reason(
+            dict(common, StartLine=3),
+            source_repo=repo,
+            target_commit=head,
+            config=config,
+        )
+        is None
+    )
+
+
+def assert_github_annotation_contract() -> None:
+    annotation = _github_annotation(
+        {
+            "level": "blocker",
+            "rule_id": "TEST.RULE",
+            "path": "src/a,b.py",
+            "line": 7,
+            "title": "Unsafe title\ncontinued",
+            "remediation": "Fix the finding.",
+        }
+    )
+    assert annotation.startswith(
+        "::error file=src/a%2Cb.py,line=7,title=TEST.RULE::"
+    )
+    assert "%0A" in annotation
+
+
 def assert_unregistered_repository_uses_universal_policy(root: Path) -> None:
     repo = root / "unregistered"
     repo.mkdir()
@@ -408,12 +506,15 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "old description\n"
         "\"\"\")\n",
     )
+    historical_path = "docs/internal/dcu-main-conflict-ledger.md"
+    write(repo / historical_path, "Historical migration ledger.\n")
     run(
         [
             "git",
             "add",
             "legacy.py",
             "python/sglang/srt/hcu/existing_multiline.py",
+            historical_path,
         ],
         repo,
     )
@@ -459,6 +560,11 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "updated description\n"
         "\"\"\")\n",
     )
+    write(
+        repo / historical_path,
+        "Historical migration ledger.\n"
+        "Runtime audit found no is_dcu predicate.\n",
+    )
     run(
         [
             "git",
@@ -467,6 +573,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
             "src/qwamdd/uidcui.py",
             "src/rename_source.py",
             "python/sglang/srt/hcu/existing_multiline.py",
+            historical_path,
         ],
         repo,
     )
@@ -477,6 +584,12 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     clean_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(clean_args)
     assert code == 0, summary.read_text(encoding="utf-8")
+    clean_content = summary.read_text(encoding="utf-8")
+    assert "Added content contains a legacy DCU token" in clean_content
+    assert (
+        "Changed destination path contains a legacy DCU token" not in clean_content
+    )
+    assert "Advisories / 提示问题：1" in clean_content
 
     # DCU is a repository-rename rule: exact tokens in destination paths and
     # added content are blocked, while unrelated substrings remain allowed.
@@ -746,6 +859,9 @@ def assert_shared_workflow_contract() -> None:
     assert "QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}" in workflow_text
     assert "TRIVY_CACHE_PATH: ${{ vars.HYGON_TRIVY_CACHE }}" in workflow_text
     assert 'export HYGON_TRIVY_CACHE="$TRIVY_CACHE_PATH"' in workflow_text
+    assert "--github-annotations" in workflow_text
+    assert 'cat "$summary"' in workflow_text
+    assert "actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3" in workflow_text
     assert not list((ROOT / "policies" / "repository-profiles").glob("*.yaml"))
 
     action = yaml.safe_load((ROOT / "action.yml").read_text(encoding="utf-8"))
@@ -769,6 +885,9 @@ def main() -> None:
         assert_clear_violations_block(root)
         assert_replacement_character_blocks(root)
         assert_existing_debt_is_not_blocked(root)
+        assert_legal_file_additions_preserve_content(root)
+        assert_non_secret_model_key_is_ignored(root)
+        assert_github_annotation_contract()
         assert_unregistered_repository_uses_universal_policy(root)
         assert_invalid_repository_name_is_invalid(root)
         assert_mutable_action_is_advisory(root)

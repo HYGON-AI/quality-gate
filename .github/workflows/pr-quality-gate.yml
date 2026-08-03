@@ -43,7 +43,7 @@ jobs:
 
     steps:
       - name: checkout-pr-head
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.event.pull_request.head.sha }}
@@ -55,7 +55,7 @@ jobs:
       # reusable workflow selected by the caller. The engine and workflow
       # therefore always come from the same reviewed Commit.
       - name: checkout-quality-gate
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
@@ -102,11 +102,13 @@ jobs:
               --policy-root "$QUALITY_GATE_ROOT/policies" \
               --checks "$CHECK_SCANNERS" \
               --display-name "$CHECK_DISPLAY_NAME" \
+              --github-annotations \
               --summary "$summary"
           result=$?
           set -e
 
           if test -f "$summary"; then
+            cat "$summary"
             cat "$summary" >> "$GITHUB_STEP_SUMMARY"
           else
             {

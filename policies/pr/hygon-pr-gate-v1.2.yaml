@@ -64,6 +64,8 @@ sensitive_diff:
       - '^DCUTLASS_[A-Z0-9_]+$'
     allowed_url_patterns:
       - '^https://harbor\.sourcefind\.cn:5443/dcu(?:/.*)?$'
+    advisory_paths:
+      - "docs/internal/**"
     excluded_paths: []
   hcu_runtime:
     terms:
