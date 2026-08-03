@@ -425,8 +425,31 @@ def scan_syntax_and_workflows(
     return findings, _status("native-syntax", "Python/YAML 明确语法和 Workflow 固定引用", findings)
 
 
-def _normalized_license_text(data: bytes) -> str:
-    return data.decode("utf-8", errors="replace").replace("\r\n", "\n").strip()
+def _normalized_legal_lines(data: bytes) -> List[str]:
+    text = (
+        data.decode("utf-8", errors="replace")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .strip()
+    )
+    if not text:
+        return []
+    return [line.rstrip() for line in text.split("\n")]
+
+
+def _preserves_legal_content(base: bytes, current: bytes) -> bool:
+    """Return true when every original line remains in its original order.
+
+    Legal and attribution files may receive scoped additions anywhere in the
+    document. Requiring the complete base document to remain one contiguous
+    substring incorrectly treats an inserted attribution as a rewrite.
+    """
+
+    original = _normalized_legal_lines(base)
+    candidate = iter(_normalized_legal_lines(current))
+    return all(
+        any(current_line == line for current_line in candidate) for line in original
+    )
 
 
 ROOT_LEGAL_FILES = {
@@ -489,15 +512,15 @@ def scan_compliance(
                     level="blocker",
                 )
             )
-        elif _normalized_license_text(base) not in _normalized_license_text(current):
+        elif not _preserves_legal_content(base, current):
             findings.append(
                 finding(
                     "LEGAL.{}_REWRITTEN".format(PurePosixPath(legal_path).name.upper()),
                     "compliance",
                     legal_path,
                     "PR 删除或重写了原 {} 内容".format(PurePosixPath(legal_path).name),
-                    "PR head 未完整包含基础分支法律文件内容",
-                    "恢复原内容；新增声明只能追加并保持适用范围清晰。",
+                    "PR head 删除、改写或重排了基础分支法律文件内容",
+                    "恢复原内容；新增声明可以插入或追加，但不得删除、改写或重排原声明。",
                     level="blocker",
                 )
             )

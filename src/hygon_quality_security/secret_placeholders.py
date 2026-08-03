@@ -19,6 +19,9 @@ ASSIGNED_VALUE_RE = re.compile(
     r"[\"']?\s*[:=]\s*[\"']([^\"']+)[\"']",
     re.IGNORECASE,
 )
+ASSIGNMENT_NAME_RE = re.compile(
+    r"[\"']?([A-Za-z_][A-Za-z0-9_-]*)[\"']?\s*[:=]",
+)
 TEMPLATE_VALUE_RE = re.compile(
     r"(?:\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|"
     r"\{\{\s*[A-Za-z_][A-Za-z0-9_.-]*\s*\}\}|"
@@ -123,6 +126,24 @@ def deterministic_placeholder_reason(
         return None
 
     rule = str(item.get("RuleID") or "").lower()
+    non_secret_rule_ids = {
+        str(value).lower()
+        for value in config.get("non_secret_assignment_rule_ids", [])
+        if str(value).strip()
+    }
+    non_secret_names = {
+        str(value).lower()
+        for value in config.get("non_secret_assignment_names", [])
+        if str(value).strip()
+    }
+    assignment = ASSIGNMENT_NAME_RE.search(line)
+    if (
+        rule in non_secret_rule_ids
+        and assignment is not None
+        and assignment.group(1).lower() in non_secret_names
+    ):
+        return "non-secret-assignment"
+
     marker_rule_ids = {
         str(value).lower()
         for value in config.get("safe_marker_rule_ids", [])

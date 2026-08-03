@@ -17,6 +17,7 @@ SENSITIVE_LIST_FIELDS = {
     "legacy_dcu": {
         "terms",
         "excluded_paths",
+        "advisory_paths",
         "allowed_identifiers",
         "allowed_identifier_patterns",
         "allowed_url_patterns",

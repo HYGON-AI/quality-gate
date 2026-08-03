@@ -43,7 +43,7 @@ jobs:
 
     steps:
       - name: checkout-pr-head
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: ${{ github.repository }}
           ref: ${{ github.event.pull_request.head.sha }}
@@ -55,7 +55,7 @@ jobs:
       # reusable workflow selected by the caller. The engine and workflow
       # therefore always come from the same reviewed Commit.
       - name: checkout-quality-gate
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
@@ -102,11 +102,13 @@ jobs:
               --policy-root "$QUALITY_GATE_ROOT/policies" \
               --checks "$CHECK_SCANNERS" \
               --display-name "$CHECK_DISPLAY_NAME" \
+              --github-annotations \
               --summary "$summary"
           result=$?
           set -e
 
           if test -f "$summary"; then
+            cat "$summary"
             cat "$summary" >> "$GITHUB_STEP_SUMMARY"
           else
             {
@@ -135,28 +137,26 @@ jobs:
         run: |
           set -euo pipefail
 
+          if test "$CHECKS_RESULT" = "success"; then
+            display_result="Passed / 通过"
+            decision="✅ **Merge Allowed / 允许合并**：all checks passed / 所有检查均已通过。"
+            result=0
+          else
+            display_result="Failed / 未通过"
+            decision="❌ **Merge Blocked / 阻断合并**：at least one check failed or produced an invalid result / 至少一项检查失败或扫描无效。"
+            result=1
+          fi
+
           {
             echo "# All required checks · PR 门禁汇总"
             echo ""
             echo "| Check Group / 检查组 | Status / 状态 |"
             echo "| --- | --- |"
-            if test "$CHECKS_RESULT" = "success"; then
-              display_result="Passed / 通过"
-            else
-              display_result="Failed / 未通过"
-            fi
             echo "| Incremental Checks / 增量检查 | $display_result |"
             echo ""
+            echo "## Decision / 判定"
+            echo ""
+            echo "$decision"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if test "$CHECKS_RESULT" != "success"; then
-            echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "❌ **Merge Blocked / 阻断合并**：at least one check failed or produced an invalid result / 至少一项检查失败或扫描无效。" \
-              >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "✅ **Merge Allowed / 允许合并**：all checks passed / 所有检查均已通过。" >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"

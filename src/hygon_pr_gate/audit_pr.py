@@ -62,6 +62,61 @@ CHECK_GROUP_DISPLAY_NAMES = {
 }
 
 
+def _workflow_command_escape(value: Any, *, property_value: bool = False) -> str:
+    escaped = (
+        str(value)
+        .replace("%", "%25")
+        .replace("\r", "%0D")
+        .replace("\n", "%0A")
+    )
+    if property_value:
+        escaped = escaped.replace(":", "%3A").replace(",", "%2C")
+    return escaped
+
+
+def _github_annotation(item: Dict[str, Any]) -> str:
+    command = "error" if item.get("level") == "blocker" else "warning"
+    properties = []
+    path = str(item.get("path") or "").strip()
+    if path and path != "Git history":
+        properties.append(
+            "file={}".format(_workflow_command_escape(path, property_value=True))
+        )
+    line = item.get("line")
+    if isinstance(line, int) and line > 0:
+        properties.append("line={}".format(line))
+    title = str(item.get("rule_id") or item.get("title") or "Quality Gate")
+    properties.append("title={}".format(_workflow_command_escape(title, property_value=True)))
+    message = "{}；{}".format(
+        str(item.get("title") or "Quality Gate finding"),
+        str(item.get("remediation") or "请查看 Job Summary。"),
+    )
+    return "::{} {}::{}".format(
+        command,
+        ",".join(properties),
+        _workflow_command_escape(message),
+    )
+
+
+def _emit_github_annotations(data: Dict[str, Any], maximum: int = 50) -> None:
+    findings = list(data.get("findings", []))
+    findings.sort(key=lambda item: item.get("level") != "blocker")
+    for item in findings[:maximum]:
+        print(_github_annotation(item))
+    if len(findings) > maximum:
+        print(
+            "::notice title=Quality Gate::{} findings omitted; see Job Summary".format(
+                len(findings) - maximum
+            )
+        )
+    if data.get("operational_error"):
+        print(
+            "::error title=Quality Gate invalid scan::{}".format(
+                _workflow_command_escape(data["operational_error"])
+            )
+        )
+
+
 def _selected_checks(value: str) -> List[str]:
     requested = [item.strip() for item in str(value or "all").split(",") if item.strip()]
     if not requested or requested == ["all"]:
@@ -157,6 +212,8 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
             scanner_status("pr-gate-orchestrator", "failed", detail=str(error)[:800])
         )
     render_summary(data, summary)
+    if getattr(args, "github_annotations", False):
+        _emit_github_annotations(data)
     if data["operational_error"]:
         return summary, 1
     if any(item.get("level") == "blocker" for item in data["findings"]):
@@ -181,6 +238,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--display-name",
         default="",
         help="validated human-readable name for the selected check group",
+    )
+    parser.add_argument(
+        "--github-annotations",
+        action="store_true",
+        help="emit escaped GitHub workflow annotations for findings",
     )
     parser.add_argument("--native-only", action="store_true", help=argparse.SUPPRESS)
     return parser

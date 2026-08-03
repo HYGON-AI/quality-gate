@@ -811,6 +811,10 @@ def scan_sensitive_diff(
         legacy.get("excluded_paths"),
         "legacy_dcu.excluded_paths",
     )
+    legacy_advisory = _as_strings(
+        legacy.get("advisory_paths"),
+        "legacy_dcu.advisory_paths",
+    )
     allowed_identifiers = _as_strings(
         legacy.get("allowed_identifiers"),
         "legacy_dcu.allowed_identifiers",
@@ -874,6 +878,7 @@ def scan_sensitive_diff(
         term: str,
         evidence: str,
         remediation: str,
+        level: str = "blocker",
     ) -> None:
         key = (rule_id, path, line, term.lower())
         if key in seen:
@@ -887,7 +892,7 @@ def scan_sensitive_diff(
                 title,
                 evidence,
                 remediation,
-                level="blocker",
+                level=level,
                 line=line,
             )
         )
@@ -897,7 +902,10 @@ def scan_sensitive_diff(
             continue
         path = change["path"]
         legacy_path_excluded = _matches_path(path, legacy_excluded)
-        if not legacy_path_excluded:
+        legacy_level = (
+            "advisory" if _matches_path(path, legacy_advisory) else "blocker"
+        )
+        if change["kind"] in {"A", "C", "R"} and not legacy_path_excluded:
             for term, _, _ in _term_matches(
                 path,
                 legacy_terms,
@@ -913,6 +921,7 @@ def scan_sensitive_diff(
                     "Destination path contains token {!r}: {!r}.".format(term, path),
                     "Rename repository-owned HCU paths; allowlist only "
                     "verified external contracts.",
+                    level=legacy_level,
                 )
 
         text = _text(path, read_blob(repo, scope["head"], path, maximum))
@@ -945,6 +954,7 @@ def scan_sensitive_diff(
                         ),
                         "Rename repository-owned HCU identifiers and visible wording; "
                         "allowlist only verified dependency, API, ABI, or macro contracts.",
+                        level=legacy_level,
                     )
 
         if _matches_path(path, runtime_excluded):

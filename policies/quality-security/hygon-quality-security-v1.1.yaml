@@ -13,6 +13,13 @@ scanners:
     finding_level: blocker
     placeholder_filter:
       enabled: true
+      # Gitleaks generic-api-key treats any high-entropy "*_key" assignment
+      # as credential-like. These exact names are domain identifiers, not
+      # authentication material, and are ignored only for the listed rule.
+      non_secret_assignment_rule_ids:
+        - generic-api-key
+      non_secret_assignment_names:
+        - model_key
       documentation_extensions:
         - .md
         - .mdx
