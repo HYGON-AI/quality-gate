@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 
 SCANNER_DISPLAY_NAMES = {
+    "sensitive-diff": "Sensitive Diff Text",
     "identity": "Built-in / 内置检查",
     "native-git": "Built-in / 内置检查",
     "native-syntax": "Built-in / 内置检查",

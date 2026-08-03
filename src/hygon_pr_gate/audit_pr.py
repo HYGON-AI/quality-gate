@@ -12,6 +12,7 @@ from hygon_quality_security.models import scanner_status
 
 from .git_scope import PRGitError, collect_scope
 from .local_executor import LocalDockerExecutor, LocalExecutionError
+from .sensitive_diff_check import scan_sensitive_diff
 from .native_checks import (
     scan_compliance,
     scan_git_and_encoding,
@@ -27,11 +28,13 @@ NATIVE_CHECKS = {
     "git-encoding": scan_git_and_encoding,
     "syntax-workflow": scan_syntax_and_workflows,
     "compliance": scan_compliance,
+    "sensitive-diff": scan_sensitive_diff,
 }
 EXTERNAL_CHECKS = ("gitleaks", "semgrep", "ruff", "quality-tools", "trivy")
 ALL_CHECKS = tuple(NATIVE_CHECKS) + EXTERNAL_CHECKS
 
 CHECK_DISPLAY_NAMES = {
+    "sensitive-diff": ("Sensitive Diff Text", "Sensitive Diff Text"),
     "identity": ("Commit Identity", "提交身份"),
     "git-encoding": ("File Integrity", "文件完整性"),
     "syntax-workflow": ("Workflow Integrity", "工作流完整性"),
@@ -40,7 +43,22 @@ CHECK_DISPLAY_NAMES = {
     "semgrep": ("Code Security", "代码安全"),
     "ruff": ("Code Quality", "代码质量"),
     "quality-tools": ("Code Quality", "代码质量"),
-    "trivy": ("Dependency Security", "依赖安全"),
+    "trivy": ("Dependency vulnerabilities", "依赖漏洞"),
+}
+
+CHECK_GROUP_DISPLAY_NAMES = {
+    ("identity", "compliance", "sensitive-diff"): (
+        "Identity, license & wording",
+        "治理与许可证合规",
+    ),
+    ("git-encoding", "syntax-workflow", "ruff", "quality-tools"): (
+        "Repository & code quality",
+        "仓库完整性与代码质量",
+    ),
+    ("gitleaks", "semgrep"): (
+        "Secrets & SAST",
+        "安全检查",
+    ),
 }
 
 
@@ -57,6 +75,9 @@ def _selected_checks(value: str) -> List[str]:
 def _check_display_name(selected: List[str]) -> Tuple[str, str]:
     if selected == list(ALL_CHECKS):
         return "All Checks", "全部检查"
+    grouped = CHECK_GROUP_DISPLAY_NAMES.get(tuple(selected))
+    if grouped is not None:
+        return grouped
     labels: List[Tuple[str, str]] = []
     for name in selected:
         label = CHECK_DISPLAY_NAMES[name]

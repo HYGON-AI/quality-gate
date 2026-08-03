@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 schema_version: 1
-policy_id: hygon-pr-gate-v1.1
+policy_id: hygon-pr-gate-v1.2
 report_language: zh-CN
 
 # The public PR gate carries only the policy fields required for incremental
@@ -38,6 +38,7 @@ advisory:
   complexity: true
   commit_message_style: true
   uncertain_provenance: true
+  mutable_action_reference: true
   semgrep_rule_ids:
     - hygon.python.subprocess-shell-true
 
@@ -52,11 +53,17 @@ sensitive_diff:
   legacy_dcu:
     terms:
       - dcu
-    allowed_url_patterns: []
-    allowed_content_patterns: []
+    allowed_content_patterns:
+      - '(?:https?://)?harbor\.sourcefind\.cn:5443/dcu(?:/[A-Za-z0-9._:@/+~-]+)*'
     allowed_identifiers:
       - DCUTLASS_ENABLE_TENSOR_CORE_MMA
-    allowed_identifier_patterns: []
+      - USE_DCU_CUSTOM_ALLREDUCE
+      - SGLANG_KV_LAYOUT_DCU_FA
+      - dcu_mla
+    allowed_identifier_patterns:
+      - '^DCUTLASS_[A-Z0-9_]+$'
+    allowed_url_patterns:
+      - '^https://harbor\.sourcefind\.cn:5443/dcu(?:/.*)?$'
     excluded_paths: []
   hcu_runtime:
     terms:
@@ -72,7 +79,13 @@ sensitive_diff:
       - _is_amd
       - AMDBackend
       - HWBackend.AMD
-    hcu_owned_paths: []
+    hcu_owned_paths:
+      - "**/hcu/**"
+      - "**/*_hcu.py"
+      - "**/hcu_*.py"
+      - ".github/workflows/*hcu*.yml"
+      - ".github/workflows/*hcu*.yaml"
+      - "scripts/**/*hcu*"
     excluded_paths:
       - "docs/**"
       - "**/docs/**"

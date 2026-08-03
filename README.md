@@ -12,7 +12,7 @@ HYGON Quality Gate 是面向 Pull Request 的增量质量、安全与开源合�
 This repository contains only:
 
 - the reusable PR workflow;
-- incremental gate rules and repository profiles;
+- one universal, centrally reviewed incremental gate policy;
 - the minimum Python implementation used by the workflow;
 - native and scanner-output tests.
 
@@ -27,27 +27,26 @@ included.
 
 | Job | Purpose / 用途 |
 | --- | --- |
-| Commit Identity | Commit Author、Committer、邮箱和消息中的禁止身份字段 |
-| File Integrity | 危险链接、异常路径、UTF-8、乱码和大文件 |
-| Workflow Integrity | Python/YAML 明确语法错误和未固定 SHA 的 Actions 引用 |
-| License Compliance | 法律文件、原版权声明、新增源码和第三方来源 |
-| Secret Detection | Gitleaks 扫描 PR 引入的 Commit，并过滤确定性示例占位符 |
-| Code Security | 离线 Semgrep 规则，仅对 PR 适用源码及变更行报告 |
-| Code Quality | Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
-| Dependency Security | 依赖清单变化时比较 Trivy base/head 结果 |
-| Quality Gate Result | 汇总前述检查并提供唯一的分支保护检查项 |
+| Identity, license & wording | Commit 身份字段、法律文件和原版权声明保护，以及 PR 新增 DCU 和 HCU 运行时 AMD/XGMI 可见文本检查 |
+| Repository & code quality | 危险 Git 对象、编码、语法、Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
+| Secrets & SAST | Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
+| Dependency vulnerabilities | 依赖清单变化时比较 Trivy base/head 结果 |
+| All required checks | 汇总前述检查并提供唯一的分支保护检查项 |
+
+目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被
+报告为提示项，不阻断合并。
 
 ## Use from another repository / 业务仓库接入
 
 Copy [`examples/workflows/quality-gate.yml`](examples/workflows/quality-gate.yml)
 to `.github/workflows/quality-gate.yml`, update the target branches, and replace
-`QUALITY_GATE_FULL_COMMIT_SHA` with a reviewed 40-character Commit SHA:
+`QUALITY_GATE_REF` with a reviewed release tag or Commit SHA:
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@QUALITY_GATE_FULL_COMMIT_SHA
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@QUALITY_GATE_REF
     permissions:
       contents: read
 ```
@@ -55,11 +54,12 @@ jobs:
 The required branch-protection check is:
 
 ```text
-Checks / Quality Gate Result
+Checks / All required checks
 ```
 
-Do not use a branch name or a movable tag for a production gate. Business
-repositories should upgrade the pinned SHA through a reviewed pull request.
+A full Commit SHA provides stronger immutability, but it is recommended rather
+than required. A reviewed release tag may be used when centralized version
+upgrades are preferred.
 
 ## Version consistency / 版本一致性
 
@@ -84,6 +84,16 @@ The runner must provide:
 - a pre-populated offline Trivy cache;
 - an isolated, disposable or equivalently hardened execution environment.
 
+All pinned scanner images must be preloaded during runner provisioning. The PR
+workflow never pulls images from the network. If an image is missing or its
+digest does not match the policy, the affected check returns `Invalid Scan`
+instead of silently passing. Validate the runner after provisioning with
+`docker image inspect` against every reference under the policy `images` map.
+
+所有固定版本扫描镜像必须在 Runner 初始化阶段预装。PR 执行期间不会联网拉取镜像；
+镜像缺失或摘要不匹配时，相应检查会明确返回“扫描无效”，不会按通过处理。Runner
+交付或清理后，应逐项使用 `docker image inspect` 核对策略 `images` 中的镜像引用。
+
 Configure the organization or repository Actions variable
 `HYGON_TRIVY_CACHE` with the absolute path of the offline Trivy cache. The gate
 uses read-only source mounts, `--network=none`, dropped Linux capabilities, and
@@ -92,12 +102,23 @@ uses read-only source mounts, `--network=none`, dropped Linux capabilities, and
 For a public repository, review GitHub's fork-workflow approval settings before
 allowing untrusted pull requests to use self-hosted runners.
 
-## Register a repository / 登记仓库
+## Universal policy and full audits / 通用策略与全仓审计
 
-Every caller must have a reviewed profile in
-[`policies/repository-profiles`](policies/repository-profiles). Add
-`OWNER_REPOSITORY.yaml`, set its expected license and legal/third-party paths,
-then run the self-tests before release.
+Any repository with a valid `OWNER/REPOSITORY` name can call the same reviewed
+workflow version; callers do not need a repository-specific profile. The PR
+gate blocks only high-confidence incremental problems such as real secrets,
+forbidden identities, definite syntax errors, legal-file or original-header
+damage, unsupported SPDX additions, and confirmed sensitive runtime wording.
+
+任意公开或私有仓库均可直接调用同一固定版本，无需逐仓登记 Profile。新增源码的原创、
+上游、第三方或生成物归属无法仅凭 PR 差异可靠判断，因此只提示开发复核，不在通用门禁中
+机械添加或强制指定许可证文件头。
+
+Repository mode, upstream provenance, third-party registration, complete
+license obligations, whole-tree file headers, historical metadata, and full
+quality/security coverage remain part of periodic whole-repository audits.
+Precise central exceptions for protected external contracts are reviewed in
+the universal policy and must not be supplied by an untrusted caller.
 
 ## Development
 

@@ -401,6 +401,11 @@ def scan_syntax_and_workflows(
                         )
                     continue
                 if not PINNED_USES_RE.fullmatch(reference):
+                    mutable_is_advisory = bool(
+                        policy.get("advisory", {}).get(
+                            "mutable_action_reference", False
+                        )
+                    )
                     findings.append(
                         finding(
                             "WORKFLOW.MUTABLE_USES",
@@ -408,8 +413,12 @@ def scan_syntax_and_workflows(
                             path,
                             "Workflow 使用可移动 Action 或 reusable workflow 引用",
                             reference,
-                            "替换为组织审核通过的完整 40 位 Commit SHA。",
-                            level="blocker",
+                            (
+                                "建议固定为组织审核通过的完整 40 位 Commit SHA；当前仅提示。"
+                                if mutable_is_advisory
+                                else "替换为组织审核通过的完整 40 位 Commit SHA。"
+                            ),
+                            level="advisory" if mutable_is_advisory else "blocker",
                             line=line_number,
                         )
                     )
@@ -420,27 +429,22 @@ def _normalized_license_text(data: bytes) -> str:
     return data.decode("utf-8", errors="replace").replace("\r\n", "\n").strip()
 
 
-def _registry_evidence(
-    repo: Path,
-    scope: Dict[str, Any],
-    path: str,
-    registries: Sequence[str],
-) -> Tuple[bool, bool]:
-    changed = {item["path"] for item in scope["changes"] if item["kind"] != "D"}
-    parent_parts = PurePosixPath(path).parts
-    candidates = {path}
-    if len(parent_parts) >= 2:
-        candidates.add("/".join(parent_parts[:2]))
-    exists = False
-    for registry in registries:
-        raw = read_blob(repo, scope["head"], registry, 4 * 1024 * 1024)
-        if raw is None:
-            continue
-        exists = True
-        text = raw.decode("utf-8", errors="replace")
-        if registry in changed or any(candidate in text for candidate in candidates):
-            return True, True
-    return exists, False
+ROOT_LEGAL_FILES = {
+    "COPYING",
+    "COPYING.md",
+    "COPYING.txt",
+    "LICENSE",
+    "LICENSE.md",
+    "LICENSE.txt",
+    "NOTICE",
+    "NOTICE.md",
+    "NOTICE.txt",
+    "THIRD_PARTY_NOTICES.md",
+}
+
+
+def _is_root_legal_file(path: str) -> bool:
+    return "/" not in path and PurePosixPath(path).name in ROOT_LEGAL_FILES
 
 
 def scan_compliance(
@@ -449,7 +453,6 @@ def scan_compliance(
     policy: Dict[str, Any],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     findings: List[Dict[str, Any]] = []
-    profile = policy["profile"]
     allowed = set(policy["open_source"]["allowed_licenses"])
     forbidden_licenses = {
         str(value)
@@ -457,16 +460,23 @@ def scan_compliance(
         .get("license_admission", {})
         .get("forbidden", [])
     }
-    legal_files = set(profile.get("legal_files", []))
-    registries = [str(value) for value in profile.get("third_party_registries", [])]
-    third_party_patterns = [str(value) for value in profile.get("third_party_paths", [])]
-    generated_patterns = [str(value) for value in profile.get("generated_paths", [])]
     header_lines = int(policy["git"]["source_header_scan_lines"])
-    for legal_path in sorted(legal_files):
+
+    legal_paths = {
+        str(change.get("old_path") or change["path"])
+        for change in scope["changes"]
+        if _is_root_legal_file(str(change.get("old_path") or change["path"]))
+    }
+    for legal_path in sorted(legal_paths):
         base = read_blob(repo, scope["merge_base"], legal_path, 4 * 1024 * 1024)
         if base is None:
             continue
-        current = read_blob(repo, scope["head"], legal_path, 4 * 1024 * 1024)
+        current = read_blob(
+            repo,
+            scope["head"],
+            legal_path,
+            4 * 1024 * 1024,
+        )
         if current is None:
             findings.append(
                 finding(
@@ -555,75 +565,38 @@ def scan_compliance(
                         break
         if change["kind"] != "A":
             continue
-        if matches(path, generated_patterns):
+
+        has_copyright = bool(COPYRIGHT_RE.search(current_header))
+        if HYGON_COPYRIGHT in current_header and not licenses:
             findings.append(
                 finding(
-                    "COPYRIGHT.GENERATED_FILE_REVIEW",
+                    "COPYRIGHT.NEW_HYGON_SOURCE_SPDX_MISSING",
                     "compliance",
                     path,
-                    "新增生成文件的版权处理待核对",
-                    "路径匹配中央仓库生成文件规则；第一版不阻断",
-                    "优先修改生成器或模板，并确认生成物是否需要文件头。",
-                    level="advisory",
-                )
-            )
-            continue
-        third_party = matches(path, third_party_patterns) or (
-            bool(COPYRIGHT_RE.search(current_header)) and HYGON_COPYRIGHT not in current_header
-        )
-        if third_party:
-            if not COPYRIGHT_RE.search(current_header) or not licenses:
-                findings.append(
-                    finding(
-                        "THIRD_PARTY.HEADER_MISSING",
-                        "compliance",
-                        path,
-                        "新增第三方源码缺少明确版权或 SPDX",
-                        "文件头未同时检测到第三方 Copyright 和单一 SPDX",
-                        "保留第三方原声明，并登记项目、仓库、版本、许可证、本地路径和 HYGON 修改。",
-                        level="blocker",
-                    )
-                )
-            exists, evidenced = _registry_evidence(repo, scope, path, registries)
-            if not exists:
-                findings.append(
-                    finding(
-                        "THIRD_PARTY.REGISTRY_MISSING",
-                        "compliance",
-                        path,
-                        "新增第三方源码但仓库没有第三方登记文件",
-                        "中央 Profile 中配置的第三方登记文件均不存在",
-                        "新增第三方登记文件并填写完整来源信息。",
-                        level="blocker",
-                    )
-                )
-            elif not evidenced:
-                findings.append(
-                    finding(
-                        "THIRD_PARTY.REGISTRY_REVIEW",
-                        "compliance",
-                        path,
-                        "新增第三方源码的登记归属待核对",
-                        "登记文件存在，但无法确定本次新增路径已有对应条目",
-                        "确认现有条目覆盖该路径，或补充来源记录；第一版不阻断。",
-                        level="advisory",
-                    )
-                )
-            continue
-        expected_license = str(profile["license"])
-        if HYGON_COPYRIGHT not in current_header or expected_license not in licenses:
-            findings.append(
-                finding(
-                    "COPYRIGHT.NEW_HYGON_SOURCE_HEADER_MISSING",
-                    "compliance",
-                    path,
-                    "HYGON 新增源码缺少完整合规文件头",
-                    "应同时包含 HYGON Copyright 和 SPDX-License-Identifier: {}".format(expected_license),
-                    "按文件注释语法补充中央模板规定的两行文件头。",
+                    "新增 HYGON 源码文件头缺少 SPDX",
+                    "文件头包含 HYGON Copyright，但未检测到 SPDX-License-Identifier",
+                    "根据仓库实际许可证补充 SPDX；不得凭名称机械选择许可证。",
                     level="blocker",
                 )
             )
-    return findings, _status("compliance", "法律文件、原声明、新增源码和第三方来源", findings)
+            continue
+        if not has_copyright or not licenses:
+            findings.append(
+                finding(
+                    "COPYRIGHT.NEW_SOURCE_HEADER_REVIEW",
+                    "compliance",
+                    path,
+                    "新增源码的版权和许可证归属待复核",
+                    "文件头未同时检测到 Copyright 和 SPDX；PR 门禁不推断原创、上游或第三方归属",
+                    "原创源码补充与仓库许可证一致的 HYGON 文件头；上游或第三方源码保留原声明并登记来源。定期全仓扫描将继续复核。",
+                    level="advisory",
+                )
+            )
+    return findings, _status(
+        "compliance",
+        "根目录法律文件、已有版权/SPDX 防删除及新增源码高置信增量检查",
+        findings,
+    )
 
 
 def run_native_checks(

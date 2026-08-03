@@ -25,36 +25,20 @@ jobs:
       max-parallel: 2
       matrix:
         include:
-          - check_id: identity-commit-check
-            display_name: Commit Identity
-            scanners: identity
+          - check_id: governance-compliance-check
+            display_name: Identity, license & wording
+            scanners: identity,compliance,sensitive-diff
 
-          - check_id: git-encoding-check
-            display_name: File Integrity
-            scanners: git-encoding
+          - check_id: repository-integrity-quality-check
+            display_name: Repository & code quality
+            scanners: git-encoding,syntax-workflow,ruff,quality-tools
 
-          - check_id: syntax-workflow-check
-            display_name: Workflow Integrity
-            scanners: syntax-workflow
+          - check_id: security-check
+            display_name: Secrets & SAST
+            scanners: gitleaks,semgrep
 
-          - check_id: license-third-party-check
-            display_name: License Compliance
-            scanners: compliance
-
-          - check_id: gitleaks-secret-check
-            display_name: Secret Detection
-            scanners: gitleaks
-
-          - check_id: semgrep-security-check
-            display_name: Code Security
-            scanners: semgrep
-
-          - check_id: quality-lint-check
-            display_name: Code Quality
-            scanners: ruff,quality-tools
-
-          - check_id: trivy-vulnerability-check
-            display_name: Dependency Security
+          - check_id: dependency-security-check
+            display_name: Dependency vulnerabilities
             scanners: trivy
 
     steps:
@@ -136,8 +120,9 @@ jobs:
           exit "$result"
 
   hygon-pr-gate-result-check:
-    name: Quality Gate Result
-    needs: incremental_check
+    name: All required checks
+    needs:
+      - incremental_check
     if: ${{ always() }}
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 5
@@ -151,7 +136,7 @@ jobs:
           set -euo pipefail
 
           {
-            echo "# Quality Gate Result · PR 门禁汇总"
+            echo "# All required checks · PR 门禁汇总"
             echo ""
             echo "| Check Group / 检查组 | Status / 状态 |"
             echo "| --- | --- |"
