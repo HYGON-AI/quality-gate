@@ -15,60 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  profile_admission:
-    name: Repository policy
-    runs-on: ${{ fromJSON(inputs.runner_labels) }}
-    timeout-minutes: 5
-
-    steps:
-      - name: checkout-quality-gate
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          fetch-depth: 1
-          persist-credentials: false
-          path: quality-gate
-
-      - name: quality-gate-engine
-        id: quality_gate
-        uses: ./quality-gate
-
-      - name: Validate repository policy
-        env:
-          TARGET_REPOSITORY: ${{ github.repository }}
-          QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}
-          HYGON_PYTHON: ${{ steps.quality_gate.outputs.python-path }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          summary="$RUNNER_TEMP/profile-admission.md"
-          set +e
-          PYTHONPATH="$QUALITY_GATE_ROOT/src" \
-            "$HYGON_PYTHON" -m hygon_pr_gate.profile_admission \
-              --repository "$TARGET_REPOSITORY" \
-              --policy-root "$QUALITY_GATE_ROOT/policies" \
-              --summary "$summary"
-          result=$?
-          set -e
-
-          if test -f "$summary"; then
-            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo "# Repository policy / 仓库策略"
-              echo ""
-              echo "Invalid admission: no result summary was generated."
-            } >> "$GITHUB_STEP_SUMMARY"
-            result=1
-          fi
-
-          exit "$result"
-
   incremental_check:
     name: ${{ matrix.display_name }}
-    needs: profile_admission
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
     timeout-minutes: 45
 
@@ -174,7 +122,6 @@ jobs:
   hygon-pr-gate-result-check:
     name: All required checks
     needs:
-      - profile_admission
       - incremental_check
     if: ${{ always() }}
     runs-on: ${{ fromJSON(inputs.runner_labels) }}
@@ -183,7 +130,6 @@ jobs:
     steps:
       - name: result
         env:
-          PROFILE_RESULT: ${{ needs.profile_admission.result }}
           CHECKS_RESULT: ${{ needs.incremental_check.result }}
         shell: bash
         run: |
@@ -194,30 +140,14 @@ jobs:
             echo ""
             echo "| Check Group / 检查组 | Status / 状态 |"
             echo "| --- | --- |"
-            if test "$PROFILE_RESULT" = "success"; then
-              profile_result="Passed / 通过"
-            else
-              profile_result="Failed / 未通过"
-            fi
-            if test "$PROFILE_RESULT" != "success"; then
-              display_result="Skipped / 未启动"
-            elif test "$CHECKS_RESULT" = "success"; then
+            if test "$CHECKS_RESULT" = "success"; then
               display_result="Passed / 通过"
             else
               display_result="Failed / 未通过"
             fi
-            echo "| Repository policy / 仓库策略 | $profile_result |"
             echo "| Incremental Checks / 增量检查 | $display_result |"
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
-
-          if test "$PROFILE_RESULT" != "success"; then
-            echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "❌ **Merge Blocked / 阻断合并**：repository profile admission failed / 仓库 Profile 准入失败；其余扫描未启动。" \
-              >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
 
           if test "$CHECKS_RESULT" != "success"; then
             echo "## Decision / 判定" >> "$GITHUB_STEP_SUMMARY"

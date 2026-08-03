@@ -126,15 +126,6 @@ def _as_strings(value: Any, label: str) -> List[str]:
     return list(value)
 
 
-def _merge_strings(*values: Sequence[str]) -> List[str]:
-    result: List[str] = []
-    for group in values:
-        for value in group:
-            if value not in result:
-                result.append(value)
-    return result
-
-
 def _token_spans(value: str) -> Iterable[Tuple[str, int, int]]:
     for word in WORD_RE.finditer(value):
         raw = word.group(0)
@@ -805,126 +796,68 @@ def scan_sensitive_diff(
     scope: Dict[str, Any],
     policy: Dict[str, Any],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    profile = policy.get("profile", {})
-    profile_checks = profile.get("checks", {})
-    if not (
-        profile_checks.get("sensitive_diff") is True
-        or profile_checks.get("hcu_runtime_wording") is True
-    ):
-        return [], scanner_status(
-            "sensitive-diff",
-            "disabled",
-            detail="Sensitive platform wording check is disabled for this repository.",
-        )
-
     config = policy.get("sensitive_diff") or {}
     if config.get("enabled") is not True:
         raise ValueError("sensitive_diff policy must be enabled")
-    profile_config = profile.get("sensitive_diff") or {}
     legacy = config.get("legacy_dcu") or {}
-    profile_legacy = profile_config.get("legacy_dcu") or {}
     runtime = config.get("hcu_runtime") or {}
-    profile_runtime = profile_config.get("hcu_runtime") or {}
 
     legacy_terms = _as_strings(legacy.get("terms"), "sensitive_diff.legacy_dcu.terms")
     runtime_terms = _as_strings(runtime.get("terms"), "sensitive_diff.hcu_runtime.terms")
     if not legacy_terms or not runtime_terms:
         raise ValueError("sensitive_diff legacy and runtime terms must be configured")
 
-    legacy_excluded = _merge_strings(
-        _as_strings(legacy.get("excluded_paths"), "legacy_dcu.excluded_paths"),
-        _as_strings(profile_legacy.get("excluded_paths"), "profile legacy_dcu.excluded_paths"),
-        _as_strings(profile.get("third_party_paths"), "profile.third_party_paths"),
-        _as_strings(profile.get("generated_paths"), "profile.generated_paths"),
+    legacy_excluded = _as_strings(
+        legacy.get("excluded_paths"),
+        "legacy_dcu.excluded_paths",
     )
-    allowed_identifiers = _merge_strings(
-        _as_strings(legacy.get("allowed_identifiers"), "legacy_dcu.allowed_identifiers"),
-        _as_strings(
-            profile_legacy.get("allowed_identifiers"),
-            "profile legacy_dcu.allowed_identifiers",
-        ),
+    allowed_identifiers = _as_strings(
+        legacy.get("allowed_identifiers"),
+        "legacy_dcu.allowed_identifiers",
     )
     allowed_identifier_patterns = _compile_patterns(
-        _merge_strings(
-            _as_strings(
-                legacy.get("allowed_identifier_patterns"),
-                "legacy_dcu.allowed_identifier_patterns",
-            ),
-            _as_strings(
-                profile_legacy.get("allowed_identifier_patterns"),
-                "profile legacy_dcu.allowed_identifier_patterns",
-            ),
+        _as_strings(
+            legacy.get("allowed_identifier_patterns"),
+            "legacy_dcu.allowed_identifier_patterns",
         ),
         "legacy_dcu.allowed_identifier_patterns",
         flags=0,
     )
     allowed_url_patterns = _compile_patterns(
-        _merge_strings(
-            _as_strings(
-                legacy.get("allowed_url_patterns"),
-                "legacy_dcu.allowed_url_patterns",
-            ),
-            _as_strings(
-                profile_legacy.get("allowed_url_patterns"),
-                "profile legacy_dcu.allowed_url_patterns",
-            ),
+        _as_strings(
+            legacy.get("allowed_url_patterns"),
+            "legacy_dcu.allowed_url_patterns",
         ),
         "legacy_dcu.allowed_url_patterns",
     )
     allowed_content_patterns = _compile_patterns(
-        _merge_strings(
-            _as_strings(
-                legacy.get("allowed_content_patterns"),
-                "legacy_dcu.allowed_content_patterns",
-            ),
-            _as_strings(
-                profile_legacy.get("allowed_content_patterns"),
-                "profile legacy_dcu.allowed_content_patterns",
-            ),
+        _as_strings(
+            legacy.get("allowed_content_patterns"),
+            "legacy_dcu.allowed_content_patterns",
         ),
         "legacy_dcu.allowed_content_patterns",
     )
 
-    hcu_owned_paths = _merge_strings(
-        _as_strings(runtime.get("hcu_owned_paths"), "hcu_runtime.hcu_owned_paths"),
-        _as_strings(
-            profile_runtime.get("hcu_owned_paths"),
-            "profile hcu_runtime.hcu_owned_paths",
-        ),
+    hcu_owned_paths = _as_strings(
+        runtime.get("hcu_owned_paths"),
+        "hcu_runtime.hcu_owned_paths",
     )
-    runtime_excluded = _merge_strings(
-        _as_strings(runtime.get("excluded_paths"), "hcu_runtime.excluded_paths"),
-        _as_strings(
-            profile_runtime.get("excluded_paths"),
-            "profile hcu_runtime.excluded_paths",
-        ),
-        _as_strings(profile.get("third_party_paths"), "profile.third_party_paths"),
-        _as_strings(profile.get("generated_paths"), "profile.generated_paths"),
+    runtime_excluded = _as_strings(
+        runtime.get("excluded_paths"),
+        "hcu_runtime.excluded_paths",
     )
-    markers = _merge_strings(
-        _as_strings(runtime.get("hcu_markers"), "hcu_runtime.hcu_markers"),
-        _as_strings(profile_runtime.get("hcu_markers"), "profile hcu_runtime.hcu_markers"),
+    markers = _as_strings(
+        runtime.get("hcu_markers"),
+        "hcu_runtime.hcu_markers",
     )
-    non_hcu_markers = _merge_strings(
-        _as_strings(
-            runtime.get("non_hcu_markers"),
-            "hcu_runtime.non_hcu_markers",
-        ),
-        _as_strings(
-            profile_runtime.get("non_hcu_markers"),
-            "profile hcu_runtime.non_hcu_markers",
-        ),
+    non_hcu_markers = _as_strings(
+        runtime.get("non_hcu_markers"),
+        "hcu_runtime.non_hcu_markers",
     )
     allowed_runtime_patterns = _compile_patterns(
-        _merge_strings(
-            _as_strings(
-                runtime.get("allowed_output_patterns"),
-                "hcu_runtime.allowed_output_patterns",
-            ),
-            _as_strings(
-                profile_runtime.get("allowed_output_patterns"),
-                "profile hcu_runtime.allowed_output_patterns",
-            ),
+        _as_strings(
+            runtime.get("allowed_output_patterns"),
+            "hcu_runtime.allowed_output_patterns",
         ),
         "hcu_runtime.allowed_output_patterns",
     )
