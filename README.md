@@ -27,7 +27,7 @@ included.
 
 | Job | Purpose / 用途 |
 | --- | --- |
-| Identity, license & wording | Commit 身份字段、法律文件和原版权声明保护，以及 PR 新增 DCU 和 HCU 运行时 AMD/XGMI 可见文本检查 |
+| Identity, license & wording | Commit 身份字段、LICENSE/NOTICE/COPYING 和原版权声明保护；`THIRD_PARTY_NOTICES.md` 变更提示；以及 PR 新增 DCU 和 HCU 运行时 AMD/XGMI 可见文本检查 |
 | Repository & code quality | 危险 Git 对象、编码、语法、Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
 | Secrets & SAST | Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
 | Dependency vulnerabilities | 依赖清单变化时比较 Trivy base/head 结果 |
