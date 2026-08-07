@@ -452,7 +452,7 @@ def _preserves_legal_content(base: bytes, current: bytes) -> bool:
     )
 
 
-ROOT_LEGAL_FILES = {
+ROOT_IMMUTABLE_LEGAL_FILES = {
     "COPYING",
     "COPYING.md",
     "COPYING.txt",
@@ -462,12 +462,16 @@ ROOT_LEGAL_FILES = {
     "NOTICE",
     "NOTICE.md",
     "NOTICE.txt",
-    "THIRD_PARTY_NOTICES.md",
 }
+THIRD_PARTY_NOTICES_FILE = "THIRD_PARTY_NOTICES.md"
 
 
-def _is_root_legal_file(path: str) -> bool:
-    return "/" not in path and PurePosixPath(path).name in ROOT_LEGAL_FILES
+def _is_root_immutable_legal_file(path: str) -> bool:
+    return "/" not in path and PurePosixPath(path).name in ROOT_IMMUTABLE_LEGAL_FILES
+
+
+def _is_root_third_party_notices(path: str) -> bool:
+    return "/" not in path and PurePosixPath(path).name == THIRD_PARTY_NOTICES_FILE
 
 
 def scan_compliance(
@@ -488,7 +492,9 @@ def scan_compliance(
     legal_paths = {
         str(change.get("old_path") or change["path"])
         for change in scope["changes"]
-        if _is_root_legal_file(str(change.get("old_path") or change["path"]))
+        if _is_root_immutable_legal_file(
+            str(change.get("old_path") or change["path"])
+        )
     }
     for legal_path in sorted(legal_paths):
         base = read_blob(repo, scope["merge_base"], legal_path, 4 * 1024 * 1024)
@@ -524,6 +530,27 @@ def scan_compliance(
                     level="blocker",
                 )
             )
+    third_party_notice_changed = any(
+        change["kind"] in {"M", "D", "R"}
+        and (
+            _is_root_third_party_notices(str(change["path"]))
+            or _is_root_third_party_notices(str(change.get("old_path") or ""))
+        )
+        for change in scope["changes"]
+    )
+    if third_party_notice_changed:
+        findings.append(
+            finding(
+                "LEGAL.THIRD_PARTY_NOTICES_REVIEW",
+                "compliance",
+                THIRD_PARTY_NOTICES_FILE,
+                "THIRD_PARTY_NOTICES.md 已删除或修改",
+                "PR 修改、删除或移动了根目录第三方依赖与许可证清单。",
+                "请确认第三方依赖、vendor 源码和许可证清单已同步；"
+                "发布前全仓合规扫描将进行最终校验。",
+                level="advisory",
+            )
+        )
     for change in scope["changes"]:
         path = change["path"]
         if change["kind"] == "D" or not is_source(path, policy):
@@ -617,7 +644,8 @@ def scan_compliance(
             )
     return findings, _status(
         "compliance",
-        "根目录法律文件、已有版权/SPDX 防删除及新增源码高置信增量检查",
+        "根目录 LICENSE/NOTICE/COPYING 防删除、第三方清单变更提示、"
+        "已有版权/SPDX 防删除及新增源码高置信增量检查",
         findings,
     )
 

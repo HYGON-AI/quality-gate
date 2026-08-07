@@ -67,6 +67,10 @@ def initialize(repo: Path) -> str:
     write(repo / "LICENSE", "Apache License\nVersion 2.0\nOriginal terms\n")
     write(repo / "NOTICE", "Original upstream notice\n")
     write(
+        repo / "THIRD_PARTY_NOTICES.md",
+        "# Third-Party Notices\n\n- Fixture dependency: Apache-2.0\n",
+    )
+    write(
         repo / "base.py",
         "# Copyright (c) Original Author\n"
         "# SPDX-License-Identifier: Apache-2.0\n"
@@ -284,6 +288,54 @@ def assert_legal_file_additions_preserve_content(root: Path) -> None:
     summary, code = run_gate(args)
     assert code == 2, summary.read_text(encoding="utf-8")
     assert "PR 删除或重写了原 NOTICE 内容" in summary.read_text(encoding="utf-8")
+
+
+def assert_third_party_notices_changes_are_advisory(root: Path) -> None:
+    repo = root / "third-party-notices"
+    repo.mkdir()
+    base = initialize(repo)
+
+    write(
+        repo / "THIRD_PARTY_NOTICES.md",
+        "# Third-Party Notices\n\n- Replacement dependency: MIT\n",
+    )
+    run(["git", "add", "THIRD_PARTY_NOTICES.md"], repo)
+    run(["git", "commit", "-q", "-m", "docs: update third party notices"], repo)
+    rewritten_head = run(["git", "rev-parse", "HEAD"], repo)
+    args = arguments(
+        repo,
+        base,
+        rewritten_head,
+        root / "third-party-notices-rewrite.md",
+    )
+    args.checks = "compliance"
+    args.display_name = "License Compliance"
+    summary, code = run_gate(args)
+    assert code == 0, summary.read_text(encoding="utf-8")
+    content = summary.read_text(encoding="utf-8")
+    assert "THIRD_PARTY_NOTICES.md 已删除或修改" in content
+    assert "请确认第三方依赖、vendor 源码和许可证清单已同步" in content
+    assert "Blockers / 阻断问题：0" in content
+    assert "Advisories / 提示问题：1" in content
+
+    (repo / "THIRD_PARTY_NOTICES.md").unlink()
+    run(["git", "add", "-u", "THIRD_PARTY_NOTICES.md"], repo)
+    run(["git", "commit", "-q", "-m", "docs: remove third party notices"], repo)
+    deleted_head = run(["git", "rev-parse", "HEAD"], repo)
+    args = arguments(
+        repo,
+        base,
+        deleted_head,
+        root / "third-party-notices-delete.md",
+    )
+    args.checks = "compliance"
+    args.display_name = "License Compliance"
+    summary, code = run_gate(args)
+    assert code == 0, summary.read_text(encoding="utf-8")
+    content = summary.read_text(encoding="utf-8")
+    assert "THIRD_PARTY_NOTICES.md 已删除或修改" in content
+    assert "Blockers / 阻断问题：0" in content
+    assert "Advisories / 提示问题：1" in content
 
 
 def assert_non_secret_model_key_is_ignored(root: Path) -> None:
@@ -886,6 +938,7 @@ def main() -> None:
         assert_replacement_character_blocks(root)
         assert_existing_debt_is_not_blocked(root)
         assert_legal_file_additions_preserve_content(root)
+        assert_third_party_notices_changes_are_advisory(root)
         assert_non_secret_model_key_is_ignored(root)
         assert_github_annotation_contract()
         assert_unregistered_repository_uses_universal_policy(root)

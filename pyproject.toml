@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hygon-quality-gate"
-version = "2.0.1"
+version = "2.0.2"
 description = "Incremental quality, security, and open-source compliance gate for pull requests"
 readme = "README.md"
 license = { file = "LICENSE" }
