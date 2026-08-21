@@ -1,131 +1,110 @@
 # HYGON Quality Gate
 
-HYGON Quality Gate is a reusable GitHub Actions workflow for incremental pull
-request checks. It evaluates only the commits, files, and changed lines
-introduced by a pull request.
+HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开源合规门禁，
+仅检查本次 PR 引入的提交、文件及变更行。
 
-HYGON Quality Gate 是面向 Pull Request 的增量质量、安全与开源合规门禁，仅检查
-本次 PR 引入的 Commit、文件及变更行。
+[English documentation](README.en.md)
 
-## Scope / 公开范围
+## 快速接入
 
-This repository contains only:
+1. 将 [`examples/workflows/quality-gate.yml`](examples/workflows/quality-gate.yml)
+   复制到目标仓库的 `.github/workflows/quality-gate.yml`。
+2. 根据目标仓库实际情况调整 `pull_request.branches`。
+3. 将 `QUALITY_GATE_REF` 替换为已审核的发布 Tag 或完整 Commit SHA。
 
-- the reusable PR workflow;
-- one universal, centrally reviewed incremental gate policy;
-- the minimum Python implementation used by the workflow;
-- native and scanner-output tests.
-
-Whole-repository audit engines, audit skills, remediation reports, target
-repository source, credentials, caches, and runner data are intentionally not
-included.
-
-本仓库不包含全仓开源合规审计 Skill、全仓质量安全审计 Skill、历史重写 Skill、
-目标仓库源码、扫描报告、凭据或 Runner 运行数据。
-
-## Checks / 检查项
-
-| Job | Purpose / 用途 |
-| --- | --- |
-| Identity, license & wording | Commit 身份字段、LICENSE/NOTICE/COPYING 和原版权声明保护；`THIRD_PARTY_NOTICES.md` 变更提示；以及 PR 新增 DCU 和 HCU 运行时 AMD/XGMI 可见文本检查 |
-| Repository & code quality | 危险 Git 对象、编码、语法、Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
-| Secrets & SAST | Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
-| Dependency vulnerabilities | 依赖清单变化时比较 Trivy base/head 结果 |
-| All required checks | 汇总前述检查并提供唯一的分支保护检查项 |
-
-目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被
-报告为提示项，不阻断合并。
-
-## Use from another repository / 业务仓库接入
-
-Copy [`examples/workflows/quality-gate.yml`](examples/workflows/quality-gate.yml)
-to `.github/workflows/quality-gate.yml`, update the target branches, and replace
-`QUALITY_GATE_REF` with a reviewed release tag or Commit SHA:
+以下示例使用当前稳定版本 [`v2.0.2`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.2)：
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@QUALITY_GATE_REF
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.2
     permissions:
       contents: read
 ```
 
-The required branch-protection check is:
+完整 Commit SHA 具有更强的不可变性，适合需要严格固定版本的仓库；如需集中升级，
+也可以使用经过审核的发布 Tag。
+
+在目标仓库的分支保护或 Ruleset 中，将以下检查设置为 Required Check：
 
 ```text
 Checks / All required checks
 ```
 
-Each scan group writes the complete report to both the expanded job log and
-the GitHub Job Summary. Blockers and advisories are also emitted as escaped
-file/line annotations, so developers can locate findings without leaving the
-job page.
+## 检查项
 
-A full Commit SHA provides stronger immutability, but it is recommended rather
-than required. A reviewed release tag may be used when centralized version
-upgrades are preferred.
+| Job | 用途 |
+| --- | --- |
+| Identity, license & wording | 检查 Commit 身份字段、LICENSE/NOTICE/COPYING、原版权声明和 `THIRD_PARTY_NOTICES.md` 变更，并检查 PR 新增的 DCU 字段及 HCU 运行路径中的 AMD/XGMI 用户可见文本 |
+| Repository & code quality | 检查危险 Git 对象、编码和语法，并运行 Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
+| Secrets & SAST | 使用 Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
+| Dependency vulnerabilities | 依赖清单变化时比较 Trivy base/head 扫描结果 |
+| All required checks | 汇总前述检查，并作为唯一的分支保护检查项 |
 
-## Version consistency / 版本一致性
+目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被报告为
+提示项，但不会阻断合并。
 
-The reusable workflow checks out its engine from `job.workflow_repository` at
-`job.workflow_sha`. Therefore, the workflow, policies, and engine always come
-from the same Commit selected by the caller; there is no second embedded engine
-SHA to update.
+每个检查组都会将完整报告写入 Job 日志和 GitHub Job Summary。阻断项和提示项还会
+生成经过转义的文件/行注解，开发人员可以直接在 Actions 页面定位问题。
 
-## Runner requirements / Runner 要求
+## 门禁范围
 
-The default runner labels are:
+本仓库仅包含：
+
+- 可复用的 PR Workflow；
+- 一套统一且集中审核的增量门禁策略；
+- Workflow 运行所需的最小 Python 实现；
+- 原生测试和扫描器输出测试。
+
+任意公开或私有仓库均可调用同一已审核版本，无需逐仓登记 Profile。PR 门禁只阻断
+高置信度的增量问题，例如真实密钥、不合规身份字段、确定的语法错误、许可证文件或
+原版权声明破坏、不受支持的 SPDX 新增，以及确认存在问题的敏感运行时表述。
+
+本仓库不包含全仓开源合规审计 Skill、全仓质量安全审计 Skill、历史重写 Skill、
+整改报告、目标仓库源码、凭据、缓存或 Runner 运行数据。
+
+仓库模式、上游来源、第三方登记、完整许可证义务、全仓文件头、历史元数据以及全量
+质量和安全覆盖，仍由周期性全仓审计负责。受保护外部契约的精确例外必须在统一策略中
+集中审核，不能由不受信任的调用方传入。
+
+## 版本一致性
+
+可复用 Workflow 使用 `job.workflow_repository` 和 `job.workflow_sha` 检出门禁引擎。
+因此，Workflow、策略和引擎始终来自调用方选定的同一 Commit，不需要维护第二个内嵌的
+引擎 SHA。
+
+## Runner 要求
+
+默认 Runner 标签为：
 
 ```json
 ["self-hosted", "linux", "x64", "quality"]
 ```
 
-The runner must provide:
+Runner 必须提供：
 
-- Git, Docker, Python 3.9+ and PyYAML;
-- the scanner images pinned in
-  [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml);
-- a pre-populated offline Trivy cache;
-- an isolated, disposable or equivalently hardened execution environment.
+- Git、Docker、Python 3.9+ 和 PyYAML；
+- 策略文件
+  [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml)
+  中固定版本的扫描镜像；
+- 预先填充的离线 Trivy 缓存；
+- 隔离、可销毁或具备等效加固措施的执行环境。
 
-All pinned scanner images must be preloaded during runner provisioning. The PR
-workflow never pulls images from the network. If an image is missing or its
-digest does not match the policy, the affected check returns `Invalid Scan`
-instead of silently passing. Validate the runner after provisioning with
-`docker image inspect` against every reference under the policy `images` map.
+所有扫描镜像必须在 Runner 初始化阶段预装。PR 执行期间不会联网拉取镜像；镜像缺失
+或摘要不匹配时，相应检查会返回 `Invalid Scan`，不会静默通过。Runner 交付或清理后，
+应逐项使用 `docker image inspect` 核对策略 `images` 中的镜像引用。
 
-所有固定版本扫描镜像必须在 Runner 初始化阶段预装。PR 执行期间不会联网拉取镜像；
-镜像缺失或摘要不匹配时，相应检查会明确返回“扫描无效”，不会按通过处理。Runner
-交付或清理后，应逐项使用 `docker image inspect` 核对策略 `images` 中的镜像引用。
+请通过组织级或仓库级 Actions Variable `HYGON_TRIVY_CACHE` 配置离线 Trivy 缓存的
+绝对路径。扫描容器使用只读源码挂载、`--network=none`、移除 Linux capabilities 和
+`no-new-privileges` 等限制。
 
-Configure the organization or repository Actions variable
-`HYGON_TRIVY_CACHE` with the absolute path of the offline Trivy cache. The gate
-uses read-only source mounts, `--network=none`, dropped Linux capabilities, and
-`no-new-privileges` for scanner containers.
+公开仓库允许不受信任的 PR 使用自建 Runner 前，必须审查 GitHub 的 Fork Workflow
+审批设置。
 
-For a public repository, review GitHub's fork-workflow approval settings before
-allowing untrusted pull requests to use self-hosted runners.
+## 本地开发与验证
 
-## Universal policy and full audits / 通用策略与全仓审计
-
-Any repository with a valid `OWNER/REPOSITORY` name can call the same reviewed
-workflow version; callers do not need a repository-specific profile. The PR
-gate blocks only high-confidence incremental problems such as real secrets,
-forbidden identities, definite syntax errors, legal-file or original-header
-damage, unsupported SPDX additions, and confirmed sensitive runtime wording.
-
-任意公开或私有仓库均可直接调用同一固定版本，无需逐仓登记 Profile。新增源码的原创、
-上游、第三方或生成物归属无法仅凭 PR 差异可靠判断，因此只提示开发复核，不在通用门禁中
-机械添加或强制指定许可证文件头。
-
-Repository mode, upstream provenance, third-party registration, complete
-license obligations, whole-tree file headers, historical metadata, and full
-quality/security coverage remain part of periodic whole-repository audits.
-Precise central exceptions for protected external contracts are reviewed in
-the universal policy and must not be supplied by an untrusted caller.
-
-## Development
+以下命令适用于 Linux 环境：
 
 ```bash
 python3 -m venv .venv
@@ -134,8 +113,9 @@ PYTHONPATH=src .venv/bin/python tests/pr_gate_self_test.py
 python3 -m compileall -q src tests
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+开发和安全说明请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 和
+[SECURITY.md](SECURITY.md)。
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+本项目使用 Apache License 2.0，详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。
