@@ -36,7 +36,7 @@ Checks / All required checks
 
 | Job | 用途 |
 | --- | --- |
-| Identity, license & wording | 检查 Commit 身份字段、LICENSE/NOTICE/COPYING、原版权声明和 `THIRD_PARTY_NOTICES.md` 变更，并检查 PR 新增的 DCU 字段及 HCU 运行路径中的 AMD/XGMI 用户可见文本 |
+| Identity, license & wording | 检查 Commit 身份字段、LICENSE/NOTICE/COPYING、原版权声明、`THIRD_PARTY_NOTICES.md` 变更，以及新增内容中的组织与平台表述 |
 | Repository & code quality | 检查危险 Git 对象、编码和语法，并运行 Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
 | Secrets & SAST | 使用 Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
 | Dependency vulnerabilities | 依赖清单变化时比较 Trivy base/head 扫描结果 |

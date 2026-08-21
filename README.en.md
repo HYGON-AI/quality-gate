@@ -40,7 +40,7 @@ Checks / All required checks
 
 | Job | Purpose |
 | --- | --- |
-| Identity, license & wording | Checks Commit identity fields, LICENSE/NOTICE/COPYING files, original copyright notices, and `THIRD_PARTY_NOTICES.md` changes; it also checks newly added DCU wording and user-visible AMD/XGMI text on HCU runtime paths |
+| Identity, license & wording | Checks Commit identity fields, LICENSE/NOTICE/COPYING files, original copyright notices, `THIRD_PARTY_NOTICES.md` changes, and organization or platform wording in newly added content |
 | Repository & code quality | Checks dangerous Git objects, encoding, and syntax, and runs Ruff, ShellCheck, actionlint, yamllint, and Lizard |
 | Secrets & SAST | Uses Gitleaks to block real secrets; offline Semgrep findings are advisory |
 | Dependency vulnerabilities | Compares Trivy base/head results when dependency manifests change |
