@@ -34,13 +34,13 @@ Checks / All required checks
 
 ## 检查项
 
-| Job | 用途 |
+| Job | 检查内容 |
 | --- | --- |
-| Identity, license & wording | 检查 Commit 身份字段、LICENSE/NOTICE/COPYING、原版权声明和 `THIRD_PARTY_NOTICES.md` 变更，并检查 PR 新增的 DCU 字段及 HCU 运行路径中的 AMD/XGMI 用户可见文本 |
-| Repository & code quality | 检查危险 Git 对象、编码和语法，并运行 Ruff、ShellCheck、actionlint、yamllint 和 Lizard |
-| Secrets & SAST | 使用 Gitleaks 硬阻断真实密钥；离线 Semgrep 发现作为提示项 |
-| Dependency vulnerabilities | 依赖清单变化时比较 Trivy base/head 扫描结果 |
-| All required checks | 汇总前述检查，并作为唯一的分支保护检查项 |
+| Identity, license & wording | <ol><li>Commit 作者、提交者、邮箱及提交信息</li><li>LICENSE/NOTICE/COPYING、原版权声明和 SPDX 标识</li><li><code>THIRD_PARTY_NOTICES.md</code> 变更</li><li>新增内容中的组织与平台表述</li></ol> |
+| Repository & code quality | <ol><li>危险符号链接、异常路径、Git Blob 和大文件</li><li>UTF-8 编码、控制字符和换行格式</li><li>Python/YAML 语法及 Workflow 引用</li><li>Ruff Python Lint</li><li>ShellCheck Shell Lint</li><li>actionlint GitHub Actions Lint</li><li>yamllint YAML Lint</li><li>Lizard 代码复杂度分析</li></ol> |
+| Secrets & SAST | <ol><li>Gitleaks 密钥泄露检测，真实密钥硬阻断</li><li>Semgrep 静态应用安全测试，当前作为提示项</li></ol> |
+| Dependency vulnerabilities | <ol><li>识别依赖清单变更</li><li>执行 Trivy base/head 增量漏洞扫描</li><li>按策略报告新增依赖漏洞</li></ol> |
+| All required checks | <ol><li>汇总前述检查结果</li><li>生成统一的分支保护检查项和 Job Summary</li></ol> |
 
 目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被报告为
 提示项，但不会阻断合并。
