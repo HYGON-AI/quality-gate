@@ -30,7 +30,7 @@ NATIVE_CHECKS = {
     "compliance": scan_compliance,
     "sensitive-diff": scan_sensitive_diff,
 }
-EXTERNAL_CHECKS = ("gitleaks", "semgrep", "ruff", "quality-tools", "trivy")
+EXTERNAL_CHECKS = ("gitleaks", "semgrep", "ruff", "quality-tools")
 ALL_CHECKS = tuple(NATIVE_CHECKS) + EXTERNAL_CHECKS
 
 CHECK_DISPLAY_NAMES = {
@@ -43,7 +43,6 @@ CHECK_DISPLAY_NAMES = {
     "semgrep": ("Code Security", "代码安全"),
     "ruff": ("Code Quality", "代码质量"),
     "quality-tools": ("Code Quality", "代码质量"),
-    "trivy": ("Dependency vulnerabilities", "依赖漏洞"),
 }
 
 CHECK_GROUP_DISPLAY_NAMES = {

@@ -34,7 +34,6 @@ EXPECTED_WORKFLOW_CHECKS = {
         "git-encoding,syntax-workflow,ruff,quality-tools",
     ),
     "security-check": ("Secrets & SAST", "gitleaks,semgrep"),
-    "dependency-security-check": ("Dependency vulnerabilities", "trivy"),
 }
 
 
@@ -590,6 +589,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
         "DCUTLASS_TEST_ENABLE_CACHED_RESULTS = True\n"
         "DCUTLASS_TEST_LEVEL = 0\n"
         "DCUTLASS_VERSIONS_GENERATED = True\n"
+        "DCUDA_ENABLED = True\n"
         "class EAGLEDraftExtendCudaGraphRunner:\n"
         "    pass\n"
         "EXTERNAL = 'https://harbor.sourcefind.cn:5443/dcu/approved/image'\n"
@@ -889,6 +889,8 @@ def assert_shared_workflow_contract() -> None:
         for item in matrix
     }
     assert checks == EXPECTED_WORKFLOW_CHECKS
+    assert "dependency-security-check" not in workflow_text
+    assert "trivy" not in workflow_text.lower()
     assert all(
         not display_name.endswith("-check")
         for display_name, _scanners in checks.values()
@@ -909,8 +911,7 @@ def assert_shared_workflow_contract() -> None:
     assert "ref: ${{ job.workflow_sha }}" in workflow_text
     assert "uses: ./quality-gate" in workflow_text
     assert "QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}" in workflow_text
-    assert "TRIVY_CACHE_PATH: ${{ vars.HYGON_TRIVY_CACHE }}" in workflow_text
-    assert 'export HYGON_TRIVY_CACHE="$TRIVY_CACHE_PATH"' in workflow_text
+    assert "HYGON_TRIVY_CACHE" not in workflow_text
     assert "--github-annotations" in workflow_text
     assert 'cat "$summary"' in workflow_text
     assert "actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3" in workflow_text

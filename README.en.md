@@ -43,7 +43,6 @@ Checks / All required checks
 | Identity, license & wording | <ol><li>Commit author, committer, email, and message fields</li><li>LICENSE/NOTICE/COPYING files, original copyright notices, and SPDX identifiers</li><li><code>THIRD_PARTY_NOTICES.md</code> changes</li><li>Organization and platform wording in newly added content</li></ol> |
 | Repository & code quality | <ol><li>Unsafe symbolic links, abnormal paths, Git blobs, and large files</li><li>UTF-8 encoding, control characters, and line endings</li><li>Python/YAML syntax and Workflow references</li><li>Ruff Python linting</li><li>ShellCheck shell linting</li><li>actionlint GitHub Actions linting</li><li>yamllint YAML linting</li><li>Lizard code-complexity analysis</li></ol> |
 | Secrets & SAST | <ol><li>Gitleaks secret detection, with real secrets treated as blockers</li><li>Semgrep static application security testing, currently advisory</li></ol> |
-| Dependency vulnerabilities | <ol><li>Dependency-manifest change detection</li><li>Trivy base/head incremental vulnerability scanning</li><li>Policy-based reporting of newly introduced dependency vulnerabilities</li></ol> |
 | All required checks | <ol><li>Aggregation of the preceding results</li><li>A single branch-protection check and Job Summary</li></ol> |
 
 Action and reusable workflow references in the target repository that are not
@@ -98,7 +97,6 @@ The runner must provide:
 - Git, Docker, Python 3.9+, and PyYAML;
 - the scanner images pinned in
   [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml);
-- a pre-populated offline Trivy cache;
 - an isolated, disposable, or equivalently hardened execution environment.
 
 All scanner images must be preloaded during runner provisioning. The PR
@@ -106,11 +104,6 @@ workflow never pulls images from the network. If an image is missing or its
 digest does not match the policy, the affected check returns `Invalid Scan`
 instead of silently passing. After provisioning or cleanup, validate each
 reference in the policy's `images` map with `docker image inspect`.
-
-Configure the organization or repository Actions Variable `HYGON_TRIVY_CACHE`
-with the absolute path of the offline Trivy cache. Scanner containers use
-read-only source mounts, `--network=none`, dropped Linux capabilities, and
-`no-new-privileges`.
 
 Before allowing untrusted pull requests in a public repository to use
 self-hosted runners, review GitHub's Fork Workflow approval settings.

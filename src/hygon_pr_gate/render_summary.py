@@ -16,7 +16,6 @@ SCANNER_DISPLAY_NAMES = {
     "semgrep": "Semgrep",
     "ruff": "Ruff",
     "quality-tools": "Quality Tools / 质量工具",
-    "trivy": "Trivy",
     "external-scanners": "External Scanners / 外部扫描器",
     "pr-gate-orchestrator": "Gate Orchestrator / 门禁调度器",
 }

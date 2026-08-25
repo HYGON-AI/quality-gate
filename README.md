@@ -39,7 +39,6 @@ Checks / All required checks
 | Identity, license & wording | <ol><li>Commit 作者、提交者、邮箱及提交信息</li><li>LICENSE/NOTICE/COPYING、原版权声明和 SPDX 标识</li><li><code>THIRD_PARTY_NOTICES.md</code> 变更</li><li>新增内容中的组织与平台表述</li></ol> |
 | Repository & code quality | <ol><li>危险符号链接、异常路径、Git Blob 和大文件</li><li>UTF-8 编码、控制字符和换行格式</li><li>Python/YAML 语法及 Workflow 引用</li><li>Ruff Python Lint</li><li>ShellCheck Shell Lint</li><li>actionlint GitHub Actions Lint</li><li>yamllint YAML Lint</li><li>Lizard 代码复杂度分析</li></ol> |
 | Secrets & SAST | <ol><li>Gitleaks 密钥泄露检测，真实密钥硬阻断</li><li>Semgrep 静态应用安全测试，当前作为提示项</li></ol> |
-| Dependency vulnerabilities | <ol><li>识别依赖清单变更</li><li>执行 Trivy base/head 增量漏洞扫描</li><li>按策略报告新增依赖漏洞</li></ol> |
 | All required checks | <ol><li>汇总前述检查结果</li><li>生成统一的分支保护检查项和 Job Summary</li></ol> |
 
 目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被报告为
@@ -88,16 +87,11 @@ Runner 必须提供：
 - 策略文件
   [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml)
   中固定版本的扫描镜像；
-- 预先填充的离线 Trivy 缓存；
 - 隔离、可销毁或具备等效加固措施的执行环境。
 
 所有扫描镜像必须在 Runner 初始化阶段预装。PR 执行期间不会联网拉取镜像；镜像缺失
 或摘要不匹配时，相应检查会返回 `Invalid Scan`，不会静默通过。Runner 交付或清理后，
 应逐项使用 `docker image inspect` 核对策略 `images` 中的镜像引用。
-
-请通过组织级或仓库级 Actions Variable `HYGON_TRIVY_CACHE` 配置离线 Trivy 缓存的
-绝对路径。扫描容器使用只读源码挂载、`--network=none`、移除 Linux capabilities 和
-`no-new-privileges` 等限制。
 
 公开仓库允许不受信任的 PR 使用自建 Runner 前，必须审查 GitHub 的 Fork Workflow
 审批设置。
