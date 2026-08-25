@@ -12,13 +12,13 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 2. 根据目标仓库实际情况调整 `pull_request.branches`。
 3. 将 `QUALITY_GATE_REF` 替换为已审核的发布 Tag 或完整 Commit SHA。
 
-以下示例使用当前稳定版本 [`v2.0.2`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.2)：
+以下示例使用当前稳定版本 [`v2.0.3`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.3)：
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.2
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.3
     permissions:
       contents: read
 ```
