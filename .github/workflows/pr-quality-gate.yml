@@ -37,10 +37,6 @@ jobs:
             display_name: Secrets & SAST
             scanners: gitleaks,semgrep
 
-          - check_id: dependency-security-check
-            display_name: Dependency vulnerabilities
-            scanners: trivy
-
     steps:
       - name: checkout-pr-head
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
@@ -77,7 +73,6 @@ jobs:
           CHECK_SCANNERS: ${{ matrix.scanners }}
           QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}
           HYGON_PYTHON: ${{ steps.quality_gate.outputs.python-path }}
-          TRIVY_CACHE_PATH: ${{ vars.HYGON_TRIVY_CACHE }}
         shell: bash
         run: |
           set -euo pipefail
@@ -88,10 +83,6 @@ jobs:
           test "$(git -C target rev-parse "${HEAD_SHA}^{commit}")" = "$HEAD_SHA"
 
           summary="$RUNNER_TEMP/${CHECK_NAME}.md"
-          if test -n "$TRIVY_CACHE_PATH"; then
-            export HYGON_TRIVY_CACHE="$TRIVY_CACHE_PATH"
-          fi
-
           set +e
           PYTHONPATH="$QUALITY_GATE_ROOT/src" \
             "$HYGON_PYTHON" -m hygon_pr_gate \

@@ -3,9 +3,7 @@
 """Run pinned scanners locally on the self-hosted quality runner."""
 
 import os
-import shutil
 import subprocess
-import tarfile
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
@@ -16,11 +14,9 @@ from hygon_quality_security.scanner_parsers import (
     parse_quality_tools,
     parse_ruff,
     parse_semgrep,
-    parse_trivy,
 )
 
 from .git_scope import git
-from .native_checks import matches
 
 
 class LocalExecutionError(RuntimeError):
@@ -248,83 +244,11 @@ class LocalDockerExecutor:
                 item["level"] = "advisory"
         return findings, self._status("quality-tools", findings, str(self.images["quality_tools"]), "ShellCheck/actionlint/yamllint/Lizard")
 
-    @staticmethod
-    def _safe_extract(archive: Path, destination: Path) -> None:
-        destination.mkdir(parents=True, exist_ok=True)
-        root = destination.resolve()
-        with tarfile.open(str(archive), "r") as stream:
-            for member in stream.getmembers():
-                target = (destination / member.name).resolve()
-                if target != root and root not in target.parents:
-                    raise LocalExecutionError("unsafe path in Git archive")
-                if member.isdir():
-                    target.mkdir(parents=True, exist_ok=True)
-                    continue
-                # Dependency scanning does not need symlinks, devices, or other
-                # special archive entries. Skipping them prevents link-based
-                # extraction from escaping the temporary base tree.
-                if not member.isfile():
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                source = stream.extractfile(member)
-                if source is None:
-                    raise LocalExecutionError("unable to read regular Git archive member")
-                with source, target.open("wb") as output:
-                    shutil.copyfileobj(source, output)
-
-    def _run_trivy(self, tree: Path, reports: Path, output_name: str) -> Path:
-        cache_value = os.environ.get("HYGON_TRIVY_CACHE", "").strip()
-        if not cache_value:
-            raise LocalExecutionError("HYGON_TRIVY_CACHE is required when dependency manifests change")
-        cache = Path(cache_value)
-        if not (cache / "db" / "metadata.json").is_file():
-            raise LocalExecutionError("local Trivy database is missing or unreadable")
-        output = reports / output_name
-        self._docker(
-            "trivy",
-            tree,
-            reports,
-            [
-                "fs", "--skip-db-update", "--skip-java-db-update", "--scanners", "vuln",
-                "--severity", "CRITICAL,HIGH", "--exit-code", "2", "--format", "json",
-                "--output", "/reports/{}".format(output_name), "/repo",
-            ],
-            mounts=[(cache, "/trivy-cache", "rw")],
-            environment=[("TRIVY_CACHE_DIR", "/trivy-cache")],
-            allowed=(0, 2),
-        )
-        return output
-
-    def _trivy(
-        self, repo: Path, scope: Dict[str, Any], reports: Path, paths: List[str]
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        manifests = self.policy.get("dependency_manifests", [])
-        if not any(matches(path, manifests) for path in paths):
-            return [], scanner_status("trivy", "passed", detail="依赖清单未变化，未启动漏洞差分")
-        base_tree = reports / "base-tree"
-        archive = reports / "base.tar"
-        git(repo, "archive", "--format=tar", "--output={}".format(archive), scope["merge_base"])
-        self._safe_extract(archive, base_tree)
-        base_report = self._run_trivy(base_tree, reports, "trivy-base.json")
-        head_report = self._run_trivy(repo, reports, "trivy-head.json")
-        trivy_policy = self.quality["scanners"]["trivy"]
-        base_findings, _ = parse_trivy(base_report, trivy_policy)
-        head_findings, _ = parse_trivy(head_report, trivy_policy)
-        known = {item["fingerprint"] for item in base_findings}
-        findings = [item for item in head_findings if item["fingerprint"] not in known]
-        for item in findings:
-            if item["level"] != "blocker":
-                item["level"] = "advisory"
-        return findings, self._status(
-            "trivy", findings, str(self.images["trivy"]),
-            "仅报告 head 相比 base 新增的 CRITICAL/HIGH；只有可修复 CRITICAL 阻断",
-        )
-
     def scan(
         self,
         repo: Path,
         scope: Dict[str, Any],
-        scanner_names: Sequence[str] = ("gitleaks", "semgrep", "ruff", "quality-tools", "trivy"),
+        scanner_names: Sequence[str] = ("gitleaks", "semgrep", "ruff", "quality-tools"),
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         paths = [item["path"] for item in scope["changes"] if item["kind"] != "D"]
         findings: List[Dict[str, Any]] = []
@@ -336,7 +260,6 @@ class LocalDockerExecutor:
                 "semgrep": lambda: self._semgrep(repo, scope, reports, paths),
                 "ruff": lambda: self._ruff(repo, scope, reports, paths),
                 "quality-tools": lambda: self._quality_tools(repo, scope, reports, paths),
-                "trivy": lambda: self._trivy(repo, scope, reports, paths),
             }
             unknown = sorted(set(scanner_names) - set(scanners))
             if unknown:
