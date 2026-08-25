@@ -14,13 +14,13 @@ the commits, files, and changed lines introduced by a pull request.
 3. Replace `QUALITY_GATE_REF` with a reviewed release tag or full Commit SHA.
 
 The following example uses the current stable release
-[`v2.0.2`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.2):
+[`v2.0.3`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.3):
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.2
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.3
     permissions:
       contents: read
 ```
