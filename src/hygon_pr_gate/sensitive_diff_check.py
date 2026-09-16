@@ -4,13 +4,17 @@
 
 import ast
 import fnmatch
+import json
+import string
+import itertools
 import re
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from hygon_quality_security.models import finding, scanner_status
 
-from .git_scope import read_blob
+from .git_scope import read_blob, blob_size, read_blob_prefix
+from .artifacts import compiled_format
 
 
 MAX_SNIPPET_LENGTH = 180
@@ -93,12 +97,29 @@ TEXT_NAMES = {"BUILD", "CMakeLists.txt", "Dockerfile", "Makefile", "WORKSPACE"}
 
 
 def _text(path: str, data: Optional[bytes]) -> Optional[str]:
-    if data is None or b"\0" in data[:8192]:
+    if data is None:
+        raise ValueError("{}：文件无法读取或超过内容检查上限，敏感字段检查未完成".format(path))
+    if data.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a")):
         return None
-    pure = PurePosixPath(path)
-    if pure.suffix.lower() not in TEXT_SUFFIXES and pure.name not in TEXT_NAMES:
-        return None
-    return data.decode("utf-8", errors="replace")
+    if b"\0" in data:
+        raise ValueError("{}：二进制内容无法完成敏感字段检查".format(path))
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("{}：内容不是有效 UTF-8，敏感字段检查未完成".format(path)) from error
+    if path.endswith(".ipynb"):
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as error:
+            raise ValueError("{}：第 {} 行第 {} 列 Notebook JSON 解析失败：{}".format(path, error.lineno, error.colno, error.msg)) from error
+        # Mask image values only, preserving original line numbers.
+        spans = []
+        for match in re.finditer(r'"image/[^"\\]*"\s*:\s*', text):
+            _, length = json.JSONDecoder().raw_decode(text[match.end():])
+            spans.append((match.end(), match.end() + length))
+        for start, end in reversed(spans):
+            text = text[:start] + "".join("\n" if c == "\n" else " " for c in text[start:end]) + text[end:]
+    return text
 
 
 def _snippet(value: str) -> str:
@@ -185,6 +206,7 @@ def _term_matches(
     allowed_identifiers: Sequence[str] = (),
     allowed_identifier_patterns: Sequence[re.Pattern] = (),
     allowed_patterns: Sequence[re.Pattern] = (),
+    substring: bool = False,
 ) -> List[Tuple[str, int, int]]:
     expected = {term.lower() for term in terms}
     allowed_url_spans = [
@@ -199,7 +221,11 @@ def _term_matches(
         )
     allowed_names = {name.lower() for name in allowed_identifiers}
     result = []
-    for token, start, end in _candidate_token_spans(value, terms):
+    candidates = (
+        ((m.group(), m.start(), m.end()) for m in re.finditer("|".join(re.escape(t) for t in terms), value, re.IGNORECASE))
+        if substring else _candidate_token_spans(value, terms)
+    )
+    for token, start, end in candidates:
         if token.lower() not in expected:
             continue
         if _covered(start, end, allowed_url_spans):
@@ -377,6 +403,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         runtime_terms: Sequence[str],
         allowed_patterns: Sequence[re.Pattern],
     ) -> None:
+        self.values = {}
         self.context = path_owned
         self.source_text = source_text
         self.added_lines = added_lines
@@ -394,102 +421,198 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
             self.visit(node)
         self.context = previous
 
-    def _record_strings(self, node: ast.AST, sink: str) -> None:
-        if not self.context:
-            return
-        for string in _string_nodes(node):
-            start = int(getattr(string, "lineno", 1) or 1)
-            segment = ast.get_source_segment(self.source_text, string) or string.value
-            for offset, value in enumerate(segment.splitlines() or [segment]):
-                line = start + offset
-                if line not in self.added_lines:
+    def _values(self, node, depth=0):
+        """Evaluate a bounded subset of expressions without running target code."""
+        if depth > 20:
+            return []
+        location = frozenset({getattr(node, 'lineno', 1)})
+        if isinstance(node, ast.Constant):
+            return [(node.value, location)]
+        if isinstance(node, ast.Name):
+            return self.values.get(node.id, [])
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            result = []
+            for left, ls in self._values(node.left, depth + 1):
+                for right, rs in self._values(node.right, depth + 1):
+                    if type(left) == type(right) and isinstance(left, (str, int, float)):
+                        result.append((left + right, ls | rs))
+                        if len(result) > 64:
+                            return []
+            return result
+        if isinstance(node, ast.JoinedStr):
+            result = [('', frozenset())]
+            for part in node.values:
+                if isinstance(part, ast.FormattedValue):
+                    if part.format_spec is not None:
+                        values = [("\ufffc", location)]
+                    else:
+                        values = [(repr(v) if part.conversion == 114 else ascii(v) if part.conversion == 97 else str(v), ls)
+                              for v, ls in self._values(part.value, depth + 1)] or [("\ufffc", location)]
+                else:
+                    values = self._values(part, depth + 1)
+                result = [(a + str(b), la | lb) for a, la in result for b, lb in values]
+                if len(result) > 64:
+                    return []
+            return result
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'format':
+            templates = self._values(node.func.value, depth + 1)
+            arguments = [self._values(arg, depth + 1) or [("\ufffc", location)] for arg in node.args]
+            keywords = {k.arg: self._values(k.value, depth + 1) or [("\ufffc", location)] for k in node.keywords if k.arg}
+            results = []
+            for template, source in templates:
+                if not isinstance(template, str):
                     continue
-                for term, _, _ in _term_matches(
-                    value,
-                    self.runtime_terms,
-                    allowed_patterns=self.allowed_patterns,
-                ):
-                    key = (line, term.lower(), value)
-                    if key in self.seen:
+                for combo in itertools.islice(itertools.product(*(arguments + list(keywords.values()))), 64):
+                    positional = combo[:len(arguments)]
+                    named = dict(zip(keywords, combo[len(arguments):]))
+                    result, origins, auto = '', source, 0
+                    try:
+                        for literal, field, spec, conversion in string.Formatter().parse(template):
+                            result += literal
+                            if field is None:
+                                continue
+                            if field == '':
+                                field, auto = str(auto), auto + 1
+                            value, origin = positional[int(field)] if field.isdigit() else named.get(field, ("\ufffc", location))
+                            origins |= origin
+                            if spec or value == "\ufffc":
+                                result += "\ufffc"
+                            else:
+                                result += repr(value) if conversion == 'r' else ascii(value) if conversion == 'a' else str(value)
+                        results.append((result, origins))
+                    except (ValueError, IndexError):
                         continue
-                    self.seen.add(key)
-                    self.matches.append((line, sink, term, value))
+            return results
+        # Arbitrary function calls are not their arguments' output values.
+        return []
+
+    def _record_strings(self, node: ast.AST, sink: str, arguments: bool = False) -> None:
+        expressions = list(node.args) if arguments and isinstance(node, ast.Call) else [node]
+        if isinstance(node, ast.Call) and _call_name(node).lower() == 'print':
+            expressions.extend(k.value for k in node.keywords if k.arg in {'sep', 'end'})
+        for expression in expressions:
+            for value, origins in self._values(expression):
+                if not isinstance(value, str):
+                    continue
+                # Direct multiline literals retain their per-line incremental scope.
+                for offset, part in enumerate(value.splitlines() or [value]):
+                    if isinstance(expression, ast.Constant):
+                        relevant = {min(expression.lineno + offset, getattr(expression, "end_lineno", expression.lineno))}
+                    else:
+                        relevant = set(origins) | set(range(expression.lineno, getattr(expression, 'end_lineno', expression.lineno) + 1))
+                    changed = relevant & self.added_lines
+                    if not changed:
+                        continue
+                    line = min(changed)
+                    for term, _, _ in _term_matches(part, self.runtime_terms,
+                            allowed_patterns=self.allowed_patterns, substring=True):
+                        key = (line, term.lower(), part)
+                        if key not in self.seen:
+                            self.seen.add(key)
+                            self.matches.append((line, sink, term, part))
 
     def visit_If(self, node: ast.If) -> None:
-        true_states, false_states, mentions_hcu = _hcu_truth_states(
-            node.test, self.markers
-        )
-        if mentions_hcu:
-            self._visit_in_context(node.body, True in true_states)
-            self._visit_in_context(node.orelse, True in false_states)
-        elif self.context:
-            non_hcu_true, non_hcu_false, mentions_non_hcu = _marker_truth_states(
-                node.test, self.non_hcu_markers, "amd"
-            )
-            if mentions_non_hcu:
-                self._visit_in_context(node.body, False in non_hcu_true)
-                self._visit_in_context(node.orelse, False in non_hcu_false)
-            else:
-                self._visit_in_context(node.body, self.context)
-                self._visit_in_context(node.orelse, self.context)
-        else:
-            self._visit_in_context(node.body, self.context)
-            self._visit_in_context(node.orelse, self.context)
+        self.visit(node.test)
+        before = dict(self.values)
+        for statement in node.body:
+            self.visit(statement)
+        positive = dict(self.values)
+        self.values = dict(before)
+        for statement in node.orelse:
+            self.visit(statement)
+        negative = self.values
+        self.values = {key: positive.get(key, []) + negative.get(key, [])
+                       for key in positive.keys() | negative.keys()}
+
+    def visit_For(self, node):
+        self.visit(node.iter)
+        if isinstance(node.iter, (ast.List, ast.Tuple, ast.Set)) and not node.iter.elts:
+            for statement in node.orelse:
+                self.visit(statement)
+            return
+        before = dict(self.values)
+        for name in _target_names(node.target):
+            self.values.pop(name, None)
+        for statement in node.body:
+            self.visit(statement)
+        self.values = {key: before.get(key, []) + self.values.get(key, [])
+                       for key in before.keys() | self.values.keys()}
+        for statement in node.orelse:
+            self.visit(statement)
+
+    visit_AsyncFor = visit_For
+
+    def visit_While(self, node):
+        self.visit(node.test)
+        before = dict(self.values)
+        if not (isinstance(node.test, ast.Constant) and not node.test.value):
+            for statement in node.body:
+                self.visit(statement)
+        self.values = {key: before.get(key, []) + self.values.get(key, [])
+                       for key in before.keys() | self.values.keys()}
+        for statement in node.orelse:
+            self.visit(statement)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self._visit_in_context(node.body, self.context or _has_hcu_token(node.name))
+        previous = self.values
+        self.values = dict(previous)
+        for statement in node.body:
+            self.visit(statement)
+        self.values = previous
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._visit_in_context(node.body, self.context or _has_hcu_token(node.name))
+        previous = self.values
+        self.values = dict(previous)
+        # Local assignments and parameters shadow outer names, even before assignment.
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                self.values.pop(child.id, None)
+            if isinstance(child, ast.arg):
+                self.values.pop(child.arg, None)
+        for statement in node.body:
+            self.visit(statement)
+        self.values = previous
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_Call(self, node: ast.Call) -> None:
         name = _call_name(node).lower()
         if name in VISIBLE_METHODS:
-            self._record_strings(node, "{}()".format(name))
-        elif name in {"argumentparser", "add_argument"}:
+            self._record_strings(node, '{}()'.format(name), arguments=True)
+        elif name in {'argumentparser', 'add_argument'}:
             for keyword in node.keywords:
                 if keyword.arg in CLI_KEYWORDS:
-                    self._record_strings(keyword.value, "{}({}=)".format(name, keyword.arg))
-        else:
-            for keyword in node.keywords:
-                if keyword.arg and _has_output_token(keyword.arg):
-                    self._record_strings(
-                        keyword.value, "{}({}=)".format(name or "call", keyword.arg)
-                    )
+                    self._record_strings(keyword.value, '{}({}=)'.format(name, keyword.arg))
         self.generic_visit(node)
 
     def visit_Raise(self, node: ast.Raise) -> None:
         if node.exc is not None:
-            self._record_strings(node.exc, "raise")
+            self._record_strings(node.exc, 'raise', arguments=True)
+        self.generic_visit(node)
+
+    def visit_Assert(self, node: ast.Assert) -> None:
+        if node.msg is not None:
+            self._record_strings(node.msg, 'assert')
         self.generic_visit(node)
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        if any(
-            _has_output_token(name)
-            for target in node.targets
-            for name in _target_names(target)
-        ):
-            self._record_strings(node.value, "visible message assignment")
+        values = self._values(node.value)
+        for target in node.targets:
+            for name in _target_names(target):
+                self.values[name] = values if isinstance(target, ast.Name) else []
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        if node.value is not None and any(
-            _has_output_token(name) for name in _target_names(node.target)
-        ):
-            self._record_strings(node.value, "visible message assignment")
+        for name in _target_names(node.target):
+            self.values[name] = self._values(node.value) if node.value is not None else []
         self.generic_visit(node)
 
-    def visit_Dict(self, node: ast.Dict) -> None:
-        for key, value in zip(node.keys, node.values):
-            if (
-                isinstance(key, ast.Constant)
-                and isinstance(key.value, str)
-                and _has_output_token(key.value)
-            ):
-                self._record_strings(value, "visible status field")
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        if isinstance(node.target, ast.Name):
+            expression = ast.BinOp(left=node.target, op=node.op, right=node.value)
+            self.values[node.target.id] = self._values(expression)
         self.generic_visit(node)
+
 
 
 def _python_runtime_matches(
@@ -504,8 +627,8 @@ def _python_runtime_matches(
 ) -> List[Tuple[int, str, str, str]]:
     try:
         tree = ast.parse(text)
-    except SyntaxError:
-        return []
+    except SyntaxError as error:
+        raise ValueError("Python 输出检查无法解析第 {} 行：{}".format(error.lineno, error.msg)) from error
     visitor = _PythonRuntimeVisitor(
         path_owned=path_owned,
         source_text=text,
@@ -747,27 +870,7 @@ def _text_runtime_matches(
     allowed_patterns: Sequence[re.Pattern],
 ) -> List[Tuple[int, str, str, str]]:
     result = []
-    suffix = PurePosixPath(path).suffix.lower()
-    shell_contexts = (
-        _shell_hcu_contexts(lines, path_owned, markers, non_hcu_markers)
-        if suffix in {".bash", ".ksh", ".sh", ".zsh"}
-        else None
-    )
-    condition_lines = lines if shell_contexts is not None else _without_c_comments(lines)
     for start, end in _output_windows(lines):
-        if shell_contexts is not None:
-            hcu_context = shell_contexts[start]
-        else:
-            nearby_context = _near_hcu_condition(
-                condition_lines,
-                start,
-                markers,
-                non_hcu_markers,
-                path_owned,
-            )
-            hcu_context = path_owned if nearby_context is None else nearby_context
-        if not hcu_context:
-            continue
         for index in range(start, end + 1):
             number = index + 1
             if number not in added_lines:
@@ -780,6 +883,7 @@ def _text_runtime_matches(
                 line,
                 runtime_terms,
                 allowed_patterns=allowed_patterns,
+                substring=True,
             ):
                 result.append((number, "visible output", term, line))
     return result
@@ -897,6 +1001,8 @@ def scan_sensitive_diff(
             )
         )
 
+    skipped = []
+    errors = []
     for change in scope["changes"]:
         if change["kind"] == "D":
             continue
@@ -924,81 +1030,102 @@ def scan_sensitive_diff(
                     level=legacy_level,
                 )
 
-        text = _text(path, read_blob(repo, scope["head"], path, maximum))
-        if text is None:
-            continue
-        added_lines = _added_lines(change, text, scope)
-        lines = text.splitlines()
+        try:
+            data = read_blob(repo, scope["head"], path, maximum)
+            if data is None:
+                size = blob_size(repo, scope["head"], path)
+                if size is None:
+                    raise ValueError("{}：目标提交中的 Git 对象不存在或无法读取".format(path))
+                kind = compiled_format(read_blob_prefix(repo, scope["head"], path))
+                if not kind:
+                    if size > maximum:
+                        raise ValueError("{}：文件大小 {} 字节超过内容检查上限 {} 字节".format(path, size, maximum))
+                    raise ValueError("{}：Git 对象内容读取失败".format(path))
+            else:
+                kind = compiled_format(data)
+            if kind:
+                skipped.append("{}：识别为{}，跳过源码文本和敏感输出检查；文件路径、大小和链接仍检查".format(path, kind))
+                continue
+            text = _text(path, data)
+            if text is None:
+                continue
+            added_lines = _added_lines(change, text, scope)
+            lines = text.splitlines()
 
-        if not legacy_path_excluded:
-            for number in sorted(added_lines):
-                if number < 1 or number > len(lines):
-                    continue
-                line = lines[number - 1]
-                for term, _, _ in _term_matches(
-                    line,
-                    legacy_terms,
-                    allowed_url_patterns=allowed_url_patterns,
-                    allowed_patterns=allowed_content_patterns,
-                    allowed_identifiers=allowed_identifiers,
-                    allowed_identifier_patterns=allowed_identifier_patterns,
-                ):
-                    add_finding(
-                        "SENSITIVE_DIFF.LEGACY_DCU_CONTENT",
-                        path,
-                        number,
-                        "Added content contains a legacy DCU token",
-                        term,
-                        "Line {} contains token {!r}: {}.".format(
-                            number, term, _snippet(line)
-                        ),
-                        "Rename repository-owned HCU identifiers and visible wording; "
-                        "allowlist only verified dependency, API, ABI, or macro contracts.",
-                        level=legacy_level,
-                    )
+            if not legacy_path_excluded:
+                for number in sorted(added_lines):
+                    if number < 1 or number > len(lines):
+                        continue
+                    line = lines[number - 1]
+                    for term, _, _ in _term_matches(
+                        line,
+                        legacy_terms,
+                        allowed_url_patterns=allowed_url_patterns,
+                        allowed_patterns=allowed_content_patterns,
+                        allowed_identifiers=allowed_identifiers,
+                        allowed_identifier_patterns=allowed_identifier_patterns,
+                    ):
+                        add_finding(
+                            "SENSITIVE_DIFF.LEGACY_DCU_CONTENT",
+                            path,
+                            number,
+                            "Added content contains a legacy DCU token",
+                            term,
+                            "Line {} contains token {!r}: {}.".format(
+                                number, term, _snippet(line)
+                            ),
+                            "Rename repository-owned HCU identifiers and visible wording; "
+                            "allowlist only verified dependency, API, ABI, or macro contracts.",
+                            level=legacy_level,
+                        )
 
-        if _matches_path(path, runtime_excluded):
-            continue
-        path_owned = _matches_path(path, hcu_owned_paths)
-        if PurePosixPath(path).suffix.lower() == ".py":
-            runtime_matches = _python_runtime_matches(
-                text,
-                path_owned=path_owned,
-                added_lines=added_lines,
-                markers=markers,
-                non_hcu_markers=non_hcu_markers,
-                runtime_terms=runtime_terms,
-                allowed_patterns=allowed_runtime_patterns,
-            )
-        else:
-            runtime_matches = _text_runtime_matches(
-                path,
-                lines,
-                path_owned=path_owned,
-                added_lines=added_lines,
-                markers=markers,
-                non_hcu_markers=non_hcu_markers,
-                runtime_terms=runtime_terms,
-                allowed_patterns=allowed_runtime_patterns,
-            )
-        for number, sink, term, value in runtime_matches:
-            add_finding(
-                "SENSITIVE_DIFF.HCU_RUNTIME_WORDING",
-                path,
-                number,
-                "HCU user-visible output contains AMD/XGMI wording",
-                term,
-                "{} contains token {!r}: {}.".format(sink, term, _snippet(value)),
-                "Use HCU device wording for hardware and HSL for HCU links; "
-                "keep ROCm/HIP wording when it describes the software stack.",
-            )
+            path_owned = True
+            if PurePosixPath(path).suffix.lower() == ".py":
+                try:
+                    ast.parse(text)
+                except SyntaxError as error:
+                    raise ValueError("{}：第 {} 行 Python 语法无法解析：{}".format(path, error.lineno, error.msg)) from error
+                runtime_matches = _python_runtime_matches(
+                    text,
+                    path_owned=path_owned,
+                    added_lines=added_lines,
+                    markers=markers,
+                    non_hcu_markers=non_hcu_markers,
+                    runtime_terms=runtime_terms,
+                    allowed_patterns=allowed_runtime_patterns,
+                )
+            else:
+                runtime_matches = _text_runtime_matches(
+                    path,
+                    lines,
+                    path_owned=path_owned,
+                    added_lines=added_lines,
+                    markers=markers,
+                    non_hcu_markers=non_hcu_markers,
+                    runtime_terms=runtime_terms,
+                    allowed_patterns=allowed_runtime_patterns,
+                )
+            for number, sink, term, value in runtime_matches:
+                add_finding(
+                    "SENSITIVE_DIFF.HCU_RUNTIME_WORDING",
+                    path,
+                    number,
+                    "HCU user-visible output contains AMD/XGMI wording",
+                    term,
+                    "{} contains token {!r}: {}.".format(sink, term, _snippet(value)),
+                    "Use HCU device wording for hardware and HSL for HCU links; "
+                    "keep ROCm/HIP wording when it describes the software stack.",
+                )
+        except (ValueError, OSError, RuntimeError) as error:
+            errors.append("{}：{}".format(path, error))
 
     return findings, scanner_status(
         "sensitive-diff",
-        "findings" if findings else "passed",
+        "failed" if errors else "findings" if findings else "passed",
         detail=(
-            "Added lines and new files only. DCU uses token matching; AMD/XGMI "
-            "requires HCU ownership and a user-visible output sink."
+            "检查所有新增文件及已有文件的新增行：DCU 按词匹配；AMD/XGMI 按子串检查可见输出，不限制目录或 HCU 标记。"
+            + ("\n检查未完成：\n" + "\n".join(errors) if errors else "")
+            + ("\n已跳过：\n" + "\n".join(skipped) if skipped else "")
         ),
         finding_count=len(findings),
     )

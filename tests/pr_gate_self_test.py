@@ -13,9 +13,6 @@ from pathlib import Path
 import yaml
 
 from hygon_pr_gate.audit_pr import _github_annotation, run_gate
-from hygon_quality_security.secret_placeholders import (
-    deterministic_placeholder_reason,
-)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,7 +30,7 @@ EXPECTED_WORKFLOW_CHECKS = {
         "Repository & code quality",
         "git-encoding,syntax-workflow,ruff,quality-tools",
     ),
-    "security-check": ("Secrets & SAST", "gitleaks,semgrep"),
+    "security-check": ("Code Security", "semgrep"),
 }
 
 
@@ -116,7 +113,7 @@ def assert_clean_pr_passes(root: Path) -> None:
     content = summary.read_text(encoding="utf-8")
     assert "# Quality Gate · PR 增量门禁" in content
     assert "Check / 检查项：`All Checks`（全部检查）" in content
-    assert "本检查通过" in content
+    assert "内置预检通过，完整门禁未执行" in content
     assert "Blockers / 阻断问题：0" in content
 
 
@@ -145,7 +142,7 @@ def assert_clear_violations_block(root: Path) -> None:
     )
     head = run(["git", "rev-parse", "HEAD"], repo)
     summary, code = run_gate(arguments(repo, base, head, root / "blocked.md"))
-    assert code == 2, summary.read_text(encoding="utf-8")
+    assert code == 1, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
     for marker in (
         "禁止的品牌身份",
@@ -156,7 +153,7 @@ def assert_clear_violations_block(root: Path) -> None:
         "新增源码的版权和许可证归属待复核",
     ):
         assert marker in content, marker
-    assert "本检查阻断" in content
+    assert "扫描无效" in content
 
 
 def assert_mutable_action_is_advisory(root: Path) -> None:
@@ -337,52 +334,6 @@ def assert_third_party_notices_changes_are_advisory(root: Path) -> None:
     assert "Advisories / 提示问题：1" in content
 
 
-def assert_non_secret_model_key_is_ignored(root: Path) -> None:
-    repo = root / "non-secret-model-key"
-    repo.mkdir()
-    initialize(repo)
-    path = "tests/hcu/test_report.py"
-    write(
-        repo / path,
-        "write_result(\n"
-        "    model_key=\"bw1100_gsm8k_hcu\",\n"
-        "    api_key=\"opaque-nonplaceholder-value-123456\",\n"
-        ")\n",
-    )
-    run(["git", "add", path], repo)
-    run(["git", "commit", "-q", "-m", "test: add report identifiers"], repo)
-    head = run(["git", "rev-parse", "HEAD"], repo)
-    policy = yaml.safe_load(
-        (
-            ROOT
-            / "policies/quality-security/hygon-quality-security-v1.1.yaml"
-        ).read_text(encoding="utf-8")
-    )
-    config = policy["scanners"]["gitleaks"]["placeholder_filter"]
-    common = {
-        "Commit": head,
-        "File": path,
-        "RuleID": "generic-api-key",
-    }
-    assert (
-        deterministic_placeholder_reason(
-            dict(common, StartLine=2),
-            source_repo=repo,
-            target_commit=head,
-            config=config,
-        )
-        == "non-secret-assignment"
-    )
-    assert (
-        deterministic_placeholder_reason(
-            dict(common, StartLine=3),
-            source_repo=repo,
-            target_commit=head,
-            config=config,
-        )
-        is None
-    )
-
 
 def assert_github_annotation_contract() -> None:
     annotation = _github_annotation(
@@ -424,7 +375,7 @@ def assert_unregistered_repository_uses_universal_policy(root: Path) -> None:
     assert code == 0, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
     assert "Invalid Scan / 扫描无效" not in content
-    assert "本检查通过" in content
+    assert "内置预检通过，完整门禁未执行" in content
 
 
 def assert_invalid_repository_name_is_invalid(root: Path) -> None:
@@ -635,13 +586,13 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     clean_args.checks = "sensitive-diff"
     clean_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(clean_args)
-    assert code == 0, summary.read_text(encoding="utf-8")
+    assert code == 2, summary.read_text(encoding="utf-8")
     clean_content = summary.read_text(encoding="utf-8")
     assert "Added content contains a legacy DCU token" in clean_content
     assert (
         "Changed destination path contains a legacy DCU token" not in clean_content
     )
-    assert "Advisories / 提示问题：1" in clean_content
+    assert "本检查阻断" in clean_content
 
     # DCU is a repository-rename rule: exact tokens in destination paths and
     # added content are blocked, while unrelated substrings remain allowed.
@@ -795,8 +746,8 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     assert "puts" in content
     assert "shell branch" in content
     assert "HCU C++ branch" in content
-    assert "non-HCU C++ branch" not in content
-    assert "compatibility path" not in content
+    assert "non-HCU C++ branch" in content
+    assert "compatibility path" in content
 
     # Identifiers and comments are not user-visible sinks. AMD paths are also
     # legal because AMD does not participate in path hard blocking.
@@ -875,7 +826,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     allowed_args.checks = "sensitive-diff"
     allowed_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(allowed_args)
-    assert code == 0, summary.read_text(encoding="utf-8")
+    assert code == 2, summary.read_text(encoding="utf-8")
 
 
 def assert_shared_workflow_contract() -> None:
@@ -940,7 +891,6 @@ def main() -> None:
         assert_existing_debt_is_not_blocked(root)
         assert_legal_file_additions_preserve_content(root)
         assert_third_party_notices_changes_are_advisory(root)
-        assert_non_secret_model_key_is_ignored(root)
         assert_github_annotation_contract()
         assert_unregistered_repository_uses_universal_policy(root)
         assert_invalid_repository_name_is_invalid(root)

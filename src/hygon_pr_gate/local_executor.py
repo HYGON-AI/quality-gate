@@ -10,7 +10,6 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from hygon_quality_security.models import scanner_status
 from hygon_quality_security.scanner_parsers import (
-    parse_gitleaks,
     parse_quality_tools,
     parse_ruff,
     parse_semgrep,
@@ -62,7 +61,7 @@ def _filter_changed_lines(
         if path not in changed_lines:
             continue
         line = item.get("line")
-        if isinstance(line, int) and changed_lines[path] and line not in changed_lines[path]:
+        if isinstance(line, int) and line not in changed_lines[path]:
             continue
         filtered.append(item)
     return filtered
@@ -124,37 +123,6 @@ class LocalDockerExecutor:
             finding_count=len(findings),
         )
 
-    def _gitleaks(
-        self, repo: Path, scope: Dict[str, Any], reports: Path
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        report = reports / "gitleaks.json"
-        self._docker(
-            "gitleaks",
-            repo,
-            reports,
-            [
-                "detect", "--source", "/repo", "--redact", "--report-format", "json",
-                "--report-path", "/reports/gitleaks.json", "--log-opts",
-                "{}..{}".format(scope["base"], scope["head"]),
-            ],
-            allowed=(0, 1),
-        )
-        if not report.exists():
-            report.write_text("[]", encoding="utf-8")
-        findings, summary = parse_gitleaks(
-            report,
-            source_repo=repo,
-            target_commit=scope["head"],
-            placeholder_config=self.quality["scanners"]["gitleaks"].get("placeholder_filter", {}),
-        )
-        detail = (
-            "扫描 PR 新增 Commit，已忽略 {} 个确定性占位符和 {} 个安全标记断言"
-        ).format(
-            summary.get("ignored_placeholders", 0),
-            summary.get("ignored_safe_markers", 0),
-        )
-        return findings, self._status("gitleaks", findings, str(self.images["gitleaks"]), detail)
-
     def _semgrep(
         self, repo: Path, scope: Dict[str, Any], reports: Path, paths: List[str]
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -188,6 +156,11 @@ class LocalDockerExecutor:
             normalized_rule = str(item.get("rule_id") or "").replace("SAST.SEMGREP.", "")
             if normalized_rule.upper() in advisory_rules:
                 item["level"] = "advisory"
+        if coverage:
+            return findings, scanner_status(
+                "semgrep", "failed", finding_count=len(findings),
+                detail="Semgrep 未完成扫描：" + "; ".join(coverage[:3]),
+            )
         return findings, self._status(
             "semgrep", findings, str(self.images["semgrep"]),
             "本地规则、无网络；覆盖异常 {} 个".format(len(coverage)),
@@ -237,26 +210,37 @@ class LocalDockerExecutor:
             mounts=[(driver, "/driver/quality_driver.py", "ro")],
             allowed=(0, 1),
         )
-        findings = parse_quality_tools(report)
-        findings = _filter_changed_lines(findings, scope["changed_lines"])
+        errors: List[str] = []
+        findings = parse_quality_tools(
+            report, changed_lines=scope["changed_lines"], operational_errors=errors,
+        )
         for item in findings:
             if item["level"] == "review":
                 item["level"] = "advisory"
+        if errors:
+            return findings, scanner_status(
+                "quality-tools", "failed", finding_count=len(findings),
+                detail="质量工具未完成扫描：" + "; ".join(errors),
+            )
         return findings, self._status("quality-tools", findings, str(self.images["quality_tools"]), "ShellCheck/actionlint/yamllint/Lizard")
 
     def scan(
         self,
         repo: Path,
         scope: Dict[str, Any],
-        scanner_names: Sequence[str] = ("gitleaks", "semgrep", "ruff", "quality-tools"),
+        scanner_names: Sequence[str] = ("semgrep", "ruff", "quality-tools"),
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        current_head = git(repo, "rev-parse", "HEAD").stdout.decode().strip()
+        if current_head != scope["head"]:
+            raise LocalExecutionError("当前检出版本与指定 head 不一致，请先检出要扫描的提交")
+        if git(repo, "status", "--porcelain", "--untracked-files=all").stdout.strip():
+            raise LocalExecutionError("工作区存在未提交或未跟踪文件，请提交、暂存到 stash 或清理后重扫")
         paths = [item["path"] for item in scope["changes"] if item["kind"] != "D"]
         findings: List[Dict[str, Any]] = []
         statuses: List[Dict[str, Any]] = []
         with tempfile.TemporaryDirectory(prefix="hygon-pr-gate-") as directory:
             reports = Path(directory)
             scanners = {
-                "gitleaks": lambda: self._gitleaks(repo, scope, reports),
                 "semgrep": lambda: self._semgrep(repo, scope, reports, paths),
                 "ruff": lambda: self._ruff(repo, scope, reports, paths),
                 "quality-tools": lambda: self._quality_tools(repo, scope, reports, paths),
@@ -268,7 +252,11 @@ class LocalDockerExecutor:
                 )
             for name in scanner_names:
                 scanner = scanners[name]
-                current, status = scanner()
+                try:
+                    current, status = scanner()
+                except Exception as error:
+                    statuses.append(scanner_status(name, "failed", detail="{}：{}".format(name, error)))
+                    continue
                 findings.extend(current)
                 statuses.append(status)
         return findings, statuses

@@ -12,7 +12,6 @@ SCANNER_DISPLAY_NAMES = {
     "native-git": "Built-in / 内置检查",
     "native-syntax": "Built-in / 内置检查",
     "compliance": "Built-in / 内置检查",
-    "gitleaks": "Gitleaks",
     "semgrep": "Semgrep",
     "ruff": "Ruff",
     "quality-tools": "Quality Tools / 质量工具",
@@ -109,10 +108,14 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
             "## Decision / 判定",
             "",
             "**{}**".format(
-                "⚠️ Invalid Scan / 扫描无效"
+                "❌ 存在阻断问题；⚠️ 扫描无效"
+                if data.get("operational_error") and blockers
+                else "⚠️ Invalid Scan / 扫描无效"
                 if data.get("operational_error")
                 else "❌ Blocked / 本检查阻断"
                 if blockers
+                else "内置预检通过，完整门禁未执行"
+                if data.get("partial")
                 else "✅ Passed / 本检查通过"
             ),
             "",

@@ -16,7 +16,6 @@ scope:
   retain_reports: false
 
 blocking:
-  real_secrets: true
   forbidden_identities: true
   dangerous_git_objects: true
   definite_syntax_errors: true
@@ -51,18 +50,10 @@ sensitive_diff:
       - dcu
     allowed_content_patterns:
       - '(?:https?://)?harbor\.sourcefind\.cn:5443/dcu(?:/[A-Za-z0-9._:@/+~-]+)*'
-    allowed_identifiers:
-      - DCUDA_ENABLED
-      - DCUTLASS_ENABLE_TENSOR_CORE_MMA
-      - USE_DCU_CUSTOM_ALLREDUCE
-      - SGLANG_KV_LAYOUT_DCU_FA
-      - dcu_mla
-    allowed_identifier_patterns:
-      - '^DCUTLASS_[A-Z0-9_]+$'
-    allowed_url_patterns:
-      - '^https://harbor\.sourcefind\.cn:5443/dcu(?:/.*)?$'
-    advisory_paths:
-      - "docs/internal/**"
+    allowed_identifiers: []
+    allowed_identifier_patterns: []
+    allowed_url_patterns: []
+    advisory_paths: []
     excluded_paths: []
   hcu_runtime:
     terms:
@@ -78,20 +69,8 @@ sensitive_diff:
       - _is_amd
       - AMDBackend
       - HWBackend.AMD
-    hcu_owned_paths:
-      - "**/hcu/**"
-      - "**/*_hcu.py"
-      - "**/hcu_*.py"
-      - ".github/workflows/*hcu*.yml"
-      - ".github/workflows/*hcu*.yaml"
-      - "scripts/**/*hcu*"
-    excluded_paths:
-      - "docs/**"
-      - "**/docs/**"
-      - "test/**"
-      - "tests/**"
-      - "**/test/**"
-      - "**/tests/**"
+    hcu_owned_paths: []
+    excluded_paths: []
     allowed_output_patterns:
       - '\bAMD\s+CPUs?\b'
       - '\bAMD/HIP\s+backend\s+compatibility\b'

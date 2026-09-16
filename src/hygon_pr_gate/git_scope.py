@@ -173,6 +173,21 @@ def read_blob(repo: Path, commit: str, path: str, max_bytes: Optional[int] = Non
     return git(repo, "show", "{}:{}".format(commit, path)).stdout
 
 
+def read_blob_prefix(repo: Path, commit: str, path: str, limit: int = 64) -> bytes:
+    """Read just a header, including for artifacts above the text size limit."""
+    with subprocess.Popen(
+        ["git", "-C", str(repo), "cat-file", "blob", "{}:{}".format(commit, path)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    ) as process:
+        prefix = process.stdout.read(limit)
+        if len(prefix) == limit:
+            process.terminate()
+        _, error = process.communicate()
+        if len(prefix) < limit and process.returncode:
+            raise PRGitError("{}：读取 Git 对象失败：{}".format(path, error.decode("utf-8", errors="replace").strip()))
+    return prefix
+
+
 def collect_scope(repo: Path, base: str, head: str) -> Dict[str, Any]:
     if not (repo / ".git").exists():
         raise PRGitError("target path is not a non-bare Git working tree")

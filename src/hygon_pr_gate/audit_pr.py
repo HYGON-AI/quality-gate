@@ -30,7 +30,7 @@ NATIVE_CHECKS = {
     "compliance": scan_compliance,
     "sensitive-diff": scan_sensitive_diff,
 }
-EXTERNAL_CHECKS = ("gitleaks", "semgrep", "ruff", "quality-tools")
+EXTERNAL_CHECKS = ("semgrep", "ruff", "quality-tools")
 ALL_CHECKS = tuple(NATIVE_CHECKS) + EXTERNAL_CHECKS
 
 CHECK_DISPLAY_NAMES = {
@@ -39,7 +39,6 @@ CHECK_DISPLAY_NAMES = {
     "git-encoding": ("File Integrity", "文件完整性"),
     "syntax-workflow": ("Workflow Integrity", "工作流完整性"),
     "compliance": ("License Compliance", "许可证合规"),
-    "gitleaks": ("Secret Detection", "密钥泄露检测"),
     "semgrep": ("Code Security", "代码安全"),
     "ruff": ("Code Quality", "代码质量"),
     "quality-tools": ("Code Quality", "代码质量"),
@@ -54,9 +53,9 @@ CHECK_GROUP_DISPLAY_NAMES = {
         "Repository & code quality",
         "仓库完整性与代码质量",
     ),
-    ("gitleaks", "semgrep"): (
-        "Secrets & SAST",
-        "安全检查",
+    ("semgrep",): (
+        "Code Security",
+        "代码安全",
     ),
 }
 
@@ -187,6 +186,7 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
             data["statuses"].append(status)
         external = [name for name in selected if name in EXTERNAL_CHECKS]
         if external and args.native_only:
+            data["partial"] = True
             data["statuses"].append(
                 scanner_status(
                     "external-scanners",
@@ -203,6 +203,9 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
             )
             data["findings"].extend(external_findings)
             data["statuses"].extend(external_statuses)
+            failures = [status["detail"] for status in external_statuses if status["state"] == "failed"]
+            if failures:
+                data["operational_error"] = "；".join(failures)
         elif external:
             raise ValueError("central PR policy may not disable external scanners")
     except Exception as error:
@@ -210,6 +213,9 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
         data["statuses"].append(
             scanner_status("pr-gate-orchestrator", "failed", detail=str(error)[:800])
         )
+    failures = [s["detail"] for s in data["statuses"] if s["state"] == "failed"]
+    if failures:
+        data["operational_error"] = "；".join(failures)
     render_summary(data, summary)
     if getattr(args, "github_annotations", False):
         _emit_github_annotations(data)
@@ -253,7 +259,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     print("SUMMARY={}".format(summary))
     print(
         "RESULT={}".format(
-            "invalid" if exit_code == 1 else "blocked" if exit_code == 2 else "passed"
+            "invalid" if exit_code == 1 else "blocked" if exit_code == 2 else "partial" if args.native_only else "passed"
         )
     )
     return exit_code

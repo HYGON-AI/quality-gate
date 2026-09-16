@@ -15,6 +15,7 @@ import yaml
 from hygon_quality_security.models import finding, scanner_status
 
 from .git_scope import blob_size, mode, read_blob
+from .artifacts import compiled_format
 
 
 HYGON_COPYRIGHT = "Copyright (c) 2026 Hygon Information Technology Co., Ltd."
@@ -52,7 +53,7 @@ def is_source(path: str, policy: Dict[str, Any]) -> bool:
 
 
 def _text(path: str, data: Optional[bytes]) -> Optional[str]:
-    if data is None or b"\0" in data[:8192]:
+    if data is None or compiled_format(data) or b"\0" in data[:8192]:
         return None
     if PurePosixPath(path).suffix.lower() not in TEXT_EXTENSIONS and PurePosixPath(path).name not in TEXT_NAMES:
         return None
@@ -117,7 +118,7 @@ def scan_identity(
         if change["kind"] == "D":
             continue
         data = read_blob(repo, scope["head"], path, max_bytes)
-        if data is None or b"\0" in data[:8192]:
+        if data is None or compiled_format(data) or b"\0" in data[:8192]:
             continue
         text = data.decode("utf-8", errors="replace")
         for number, line in enumerate(text.splitlines(), 1):
@@ -240,7 +241,7 @@ def scan_git_and_encoding(
                 )
             )
         data = read_blob(repo, scope["head"], path, maximum)
-        if data is None or b"\0" in data[:8192]:
+        if data is None or compiled_format(data) or b"\0" in data[:8192]:
             continue
         if PurePosixPath(path).suffix.lower() not in TEXT_EXTENSIONS and PurePosixPath(path).name not in TEXT_NAMES:
             continue
@@ -335,7 +336,7 @@ def scan_syntax_and_workflows(
         if change["kind"] == "D":
             continue
         data = read_blob(repo, scope["head"], path, maximum)
-        if data is None or b"\0" in data[:8192]:
+        if data is None or compiled_format(data) or b"\0" in data[:8192]:
             continue
         try:
             text = data.decode("utf-8")
@@ -556,7 +557,7 @@ def scan_compliance(
         if change["kind"] == "D" or not is_source(path, policy):
             continue
         raw = read_blob(repo, scope["head"], path, int(policy["git"]["max_text_scan_bytes"]))
-        if raw is None or b"\0" in raw[:8192]:
+        if raw is None or compiled_format(raw) or b"\0" in raw[:8192]:
             continue
         text = raw.decode("utf-8", errors="replace")
         current_header = _header(text, header_lines)
