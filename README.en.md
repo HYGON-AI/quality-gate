@@ -128,3 +128,7 @@ development and security guidance.
 
 This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE)
 and [NOTICE](NOTICE).
+
+## CI Python bootstrap
+
+The pinned setup-uv action installs uv 0.12.15 and prepares managed Python 3.11, including on Rocky Linux. Each job creates a unique virtual environment in RUNNER_TEMP and installs PyYAML==6.0.3 from PyPI. Host user packages are not required or modified. Runner 2.327.1+ (Node.js 24 support), writable temp directories and network access to the GitHub Python downloads and PyPI are required. Bootstrap failures stop the job with a stage-specific error. Docker and the policy-pinned scanner images must still be provisioned on every matching runner; scan containers remain offline. Fully offline bootstrap is not supported.

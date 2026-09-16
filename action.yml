@@ -8,28 +8,28 @@ outputs:
     description: Absolute path to the checked-out quality gate.
     value: ${{ steps.locate.outputs.gate-path }}
   python-path:
-    description: Python 3.9+ interpreter with PyYAML available on the runner.
+    description: Isolated Python interpreter with verified PyYAML dependency.
     value: ${{ steps.locate.outputs.python-path }}
 
 runs:
   using: composite
   steps:
-    - id: locate
-      name: Locate immutable quality gate
+    - name: Prepare quality gate environment manager
+      id: uv
+      uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+      with:
+        version: '0.12.15'
+        enable-cache: false
+
+    - name: Explain environment manager setup failure
+      if: ${{ failure() && steps.uv.outcome == 'failure' }}
       shell: bash
       run: |
-        set -euo pipefail
-        test -f "$GITHUB_ACTION_PATH/pyproject.toml"
-        test -d "$GITHUB_ACTION_PATH/src/hygon_pr_gate"
-        test -d "$GITHUB_ACTION_PATH/policies"
-        HYGON_PYTHON=""
-        for candidate in python3.12 python3.11 python3.10 python3.9; do
-          if command -v "$candidate" >/dev/null 2>&1 \
-            && "$candidate" -c 'import sys, yaml; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)'; then
-            HYGON_PYTHON=$(command -v "$candidate")
-            break
-          fi
-        done
-        test -n "$HYGON_PYTHON"
-        echo "gate-path=$GITHUB_ACTION_PATH" >> "$GITHUB_OUTPUT"
-        echo "python-path=$HYGON_PYTHON" >> "$GITHUB_OUTPUT"
+        echo "::error::质量门禁尚未开始扫描：无法准备 uv。请检查上方下载日志、Runner 临时目录写权限及访问 GitHub 的网络。setup-uv v7 要求 Runner 2.327.1 或更新版本。"
+
+    - id: locate
+      name: Prepare isolated quality gate Python and dependencies
+      shell: bash
+      env:
+        GATE_BOOTSTRAP_UV: ${{ steps.uv.outputs.uv-path }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/prepare-python.sh"
