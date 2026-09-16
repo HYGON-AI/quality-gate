@@ -16,7 +16,6 @@ scope:
   retain_reports: false
 
 blocking:
-  real_secrets: true
   forbidden_identities: true
   dangerous_git_objects: true
   definite_syntax_errors: true

@@ -38,11 +38,13 @@ Checks / All required checks
 
 ## Checks
 
+Secret scanning has been removed. The gate no longer requires Gitleaks or its image.
+
 | Job | Checks |
 | --- | --- |
 | Identity, license & wording | <ol><li>Commit author, committer, email, and message fields</li><li>LICENSE/NOTICE/COPYING files, original copyright notices, and SPDX identifiers</li><li><code>THIRD_PARTY_NOTICES.md</code> changes</li><li>Organization and platform wording in newly added content</li></ol> |
 | Repository & code quality | <ol><li>Unsafe symbolic links, abnormal paths, Git blobs, and large files</li><li>UTF-8 encoding, control characters, and line endings</li><li>Python/YAML syntax and Workflow references</li><li>Ruff Python linting</li><li>ShellCheck shell linting</li><li>actionlint GitHub Actions linting</li><li>yamllint YAML linting</li><li>Lizard code-complexity analysis</li></ol> |
-| Secrets & SAST | <ol><li>Gitleaks secret detection, with real secrets treated as blockers</li><li>Semgrep static application security testing, currently advisory</li></ol> |
+| Code Security | <ol><li>Semgrep static application security testing, currently advisory</li></ol> |
 | All required checks | <ol><li>Aggregation of the preceding results</li><li>A single branch-protection check and Job Summary</li></ol> |
 
 Action and reusable workflow references in the target repository that are not
@@ -63,7 +65,7 @@ This repository contains only:
 
 Any public or private repository can call the same reviewed version without a
 repository-specific profile. The PR gate blocks only high-confidence
-incremental problems, including real secrets, forbidden identity fields,
+incremental problems, including forbidden identity fields,
 definite syntax errors, legal-file or original-header damage, unsupported SPDX
 additions, and confirmed sensitive runtime wording.
 

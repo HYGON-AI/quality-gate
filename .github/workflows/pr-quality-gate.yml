@@ -34,8 +34,8 @@ jobs:
             scanners: git-encoding,syntax-workflow,ruff,quality-tools
 
           - check_id: security-check
-            display_name: Secrets & SAST
-            scanners: gitleaks,semgrep
+            display_name: Code Security
+            scanners: semgrep
 
     steps:
       - name: checkout-pr-head
