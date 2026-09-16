@@ -8,28 +8,13 @@ outputs:
     description: Absolute path to the checked-out quality gate.
     value: ${{ steps.locate.outputs.gate-path }}
   python-path:
-    description: Isolated Python interpreter with verified PyYAML dependency.
+    description: Existing Python 3.9+ interpreter, with isolated PyYAML installation when needed.
     value: ${{ steps.locate.outputs.python-path }}
 
 runs:
   using: composite
   steps:
-    - name: Prepare quality gate environment manager
-      id: uv
-      uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
-      with:
-        version: '0.12.15'
-        enable-cache: false
-
-    - name: Explain environment manager setup failure
-      if: ${{ failure() && steps.uv.outcome == 'failure' }}
-      shell: bash
-      run: |
-        echo "::error::质量门禁尚未开始扫描：无法准备 uv。请检查上方下载日志、Runner 临时目录写权限及访问 GitHub 的网络。setup-uv v7 要求 Runner 2.327.1 或更新版本。"
-
     - id: locate
-      name: Prepare isolated quality gate Python and dependencies
+      name: Prepare quality gate Python and dependencies
       shell: bash
-      env:
-        GATE_BOOTSTRAP_UV: ${{ steps.uv.outputs.uv-path }}
       run: bash "$GITHUB_ACTION_PATH/scripts/prepare-python.sh"

@@ -98,15 +98,15 @@ Checks / All required checks
 Runner 必须提供：
 
 - Git、Docker、Bash，以及支持 Node.js 24 Action 的 GitHub Runner（2.327.1 或更新版本）；
-- 可写的 Runner 临时目录；允许访问 GitHub Python 下载地址、pypi.org、files.pythonhosted.org（可通过网络代理）；
+- Python 3.9+、可写的 Runner 临时目录；缺少 PyYAML 时需要 venv/ensurepip 和 PyPI 网络（可通过代理）；
 - 策略文件
   [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml)
   中固定版本的扫描镜像；
 - 隔离、可销毁或具备等效加固措施的执行环境。
 
-工作流通过固定提交的 `astral-sh/setup-uv`（uv 0.12.15） 准备 Python 3.11（独立下载，不依赖宿主机 Python），每个任务在 `RUNNER_TEMP` 创建独立虚拟环境并安装固定的 `PyYAML==6.0.3`。无需预装宿主机 PyYAML，不修改系统 Python，也不依赖仓库路径、用户 site-packages 或命令名探测。下载、环境创建或依赖安装失败时会给出阶段和原因；不会继续扫描或显示通过。
+工作流优先使用已激活虚拟环境中的 Python，其次检查 PATH 中的 `python3`、`python` 及常见版本命令，要求 Python 3.9+。找到能导入 PyYAML 的解释器就直接复用，无需联网。若符合版本要求的解释器都缺少 PyYAML，则在 `RUNNER_TEMP` 创建独立 venv，仅安装 `PyYAML==6.0.3`，不修改系统或原虚拟环境。
 
-Python 和 PyYAML 环境准备允许联网；源码扫描容器仍禁止联网。完全离线 Runner 不适用当前自动准备流程。
+不引入 uv，也不自动下载 Python。未找到 Python 3.9+ 时明确提示管理员安装并配置 Runner 服务用户的 PATH；创建环境需要对应 Python 的 venv/ensurepip 支持。仅安装 PyYAML 时需要访问 PyPI 或代理，预装依赖的 Runner 可离线启动；扫描容器仍禁止联网。
 
 所有扫描镜像必须在 Runner 初始化阶段预装。PR 执行期间不会联网拉取镜像；镜像缺失
 或摘要不匹配时，相应检查会返回 `Invalid Scan`，不会静默通过。Runner 交付或清理后，
@@ -135,10 +135,10 @@ PYTHONPATH=src .venv/bin/python tests/real_tools_integration.py --output /tmp/qu
 
 覆盖六个真实工具、正常通过、敏感输出阻断、已有告警与新增告警的区分，以及解析失败时保留已有发现。Semgrep 安全规则、ShellCheck 警告和复杂度在当前策略中作为提示，不能将“工具已执行”理解成“所有告警都阻断”。
 
-Action 依赖准备集成测试（预先安装 uv 0.12.15；实际联网下载 Python 和 PyYAML，验证缺失 uv、检出不完整、网络失败及重复任务隔离）：
+Action 依赖准备集成测试（使用已有 Python；验证离线复用、版本检查、缺少 PyYAML 时隔离安装及失败提示）：
 
 ```bash
-GATE_BOOTSTRAP_UV="$(command -v uv)" python3 tests/runner_bootstrap_integration.py
+python3 tests/runner_bootstrap_integration.py
 ```
 
 开发和安全说明请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 和
