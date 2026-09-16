@@ -128,3 +128,7 @@ development and security guidance.
 
 This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE)
 and [NOTICE](NOTICE).
+
+## CI Python bootstrap
+
+The action reuses an existing Python 3.9+ from the active virtual environment or PATH (including python3). If PyYAML is importable, no installation or network is needed. Otherwise it creates a job-local venv in RUNNER_TEMP and installs only PyYAML==6.0.3 from PyPI, without modifying the system or existing virtual environment. This fallback needs venv/ensurepip and network access to PyPI. No uv or Python download is introduced. Missing compatible Python, venv support, or failed installation produces an explicit startup error. Docker and policy-pinned scanner images remain runner prerequisites.
