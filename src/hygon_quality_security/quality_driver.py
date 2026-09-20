@@ -192,7 +192,7 @@ def distinct_typed_key_lines(text):
                 if isinstance(key, yaml.ScalarNode):
                     previous = tags.setdefault(key.value, set())
                     if previous and key.tag not in previous:
-                        ignored.add(key.start_mark.line + 1)
+                        ignored.add((key.start_mark.line + 1, key.start_mark.column + 1))
                     previous.add(key.tag)
                 visit(key)
                 visit(value)
@@ -223,7 +223,7 @@ def scan_yamllint(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
             if not match:
                 continue
             path, row, _column, severity, message, rule = match.groups()
-            if rule == 'key-duplicates' and int(row) in distinct_typed_key_lines(
+            if rule == 'key-duplicates' and (int(row), int(_column)) in distinct_typed_key_lines(
                     (repo / path).read_text(encoding='utf-8')):
                 continue
             is_hard = rule in {"syntax", "key-duplicates"}

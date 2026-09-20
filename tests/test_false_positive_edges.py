@@ -11,7 +11,8 @@ from hygon_quality_security.quality_driver import distinct_typed_key_lines
 
 class YamlEdges(unittest.TestCase):
     def test_linter_typed_key_filter_is_narrow(self):
-        self.assertEqual(distinct_typed_key_lines('1: n\n"1": s\n"1": duplicate\n'), {2})
+        self.assertEqual(distinct_typed_key_lines('1: n\n"1": s\n"1": duplicate\n'), {(2, 1)})
+        self.assertEqual(distinct_typed_key_lines('{1: n, "1": s, "1": duplicate}\n'), {(1, 8)})
         self.assertEqual(distinct_typed_key_lines('a: one\n"a": two\n'), set())
         self.assertEqual(distinct_typed_key_lines('1: n\n"1": [broken\n'), set())
         self.assertEqual(distinct_typed_key_lines('v: &a [*a]\n'), set())
