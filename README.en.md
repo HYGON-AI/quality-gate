@@ -6,6 +6,8 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
+This document describes the unreleased fix branch. The existing `v2.0.3` tag is unchanged.
+
 ## Quick start
 
 1. Copy [`examples/workflows/quality-gate.yml`](examples/workflows/quality-gate.yml)
@@ -38,13 +40,13 @@ Checks / All required checks
 
 ## Checks
 
-Secret scanning has been removed. The gate no longer requires Gitleaks or its image.
+Gitleaks findings are advisory and redacted; they do not block merging.
 
 | Job | Checks |
 | --- | --- |
 | Identity, license & wording | <ol><li>Commit author, committer, email, and message fields</li><li>LICENSE/NOTICE/COPYING files, original copyright notices, and SPDX identifiers</li><li><code>THIRD_PARTY_NOTICES.md</code> changes</li><li>Organization and platform wording in newly added content</li></ol> |
 | Repository & code quality | <ol><li>Unsafe symbolic links, abnormal paths, Git blobs, and large files</li><li>UTF-8 encoding, control characters, and line endings</li><li>Python/YAML syntax and Workflow references</li><li>Ruff Python linting</li><li>ShellCheck shell linting</li><li>actionlint GitHub Actions linting</li><li>yamllint YAML linting</li><li>Lizard code-complexity analysis</li></ol> |
-| Code Security | <ol><li>Semgrep static application security testing, currently advisory</li></ol> |
+| Secrets & SAST | <ol><li>Gitleaks secret detection, redacted and advisory only</li><li>Semgrep static application security testing, currently advisory</li></ol> |
 | All required checks | <ol><li>Aggregation of the preceding results</li><li>A single branch-protection check and Job Summary</li></ol> |
 
 Action and reusable workflow references in the target repository that are not
@@ -67,7 +69,8 @@ Any public or private repository can call the same reviewed version without a
 repository-specific profile. The PR gate blocks only high-confidence
 incremental problems, including forbidden identity fields,
 definite syntax errors, legal-file or original-header damage, unsupported SPDX
-additions, and confirmed sensitive runtime wording.
+additions. Lexical DCU/AMD/XGMI matches are advisory;
+do not mechanically rename upstream copyrights, vendor backends or API/ABI contracts.
 
 Whole-repository open-source compliance audit skills, quality and security
 audit skills, history-rewrite skills, remediation reports, target repository
@@ -78,6 +81,13 @@ license obligations, whole-tree file headers, historical metadata, and full
 quality/security coverage remain part of periodic whole-repository audits.
 Precise exceptions for protected external contracts must be centrally reviewed
 in the universal policy and must not be supplied by an untrusted caller.
+
+Ordinary YAML accepts multiple documents and custom tags without constructing objects.
+Malformed documents and duplicate keys still block; Actions must be a single mapping.
+Recognized Helm templates require rendered validation, not a claimed syntax pass.
+Existing syntax debt is advisory only for conservative comment-only changes, not a
+complete semantic baseline comparison. Unsupported language versions still need review.
+Scanner failures or missing reports remain invalid scans.
 
 ## Version consistency
 
@@ -101,7 +111,12 @@ The runner must provide:
   [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml);
 - an isolated, disposable, or equivalently hardened execution environment.
 
-All scanner images must be preloaded during runner provisioning. The PR
+The action reuses existing Python and PyYAML. If PyYAML is missing, it creates
+an isolated venv in `RUNNER_TEMP` and installs `PyYAML==6.0.3`. This requires
+venv/ensurepip and PyPI connectivity. Python itself is never downloaded;
+preinstalled PyYAML avoids network bootstrap.
+
+All scanner images, including Gitleaks, must be preloaded during runner provisioning. The PR
 workflow never pulls images from the network. If an image is missing or its
 digest does not match the policy, the affected check returns `Invalid Scan`
 instead of silently passing. After provisioning or cleanup, validate each
@@ -118,8 +133,22 @@ The following commands target a Linux environment:
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 PYTHONPATH=src .venv/bin/python tests/pr_gate_self_test.py
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+.venv/bin/python tests/runner_bootstrap_integration.py -v
 python3 -m compileall -q src tests
 ```
+
+After preinstalling the four policy-pinned Docker images, run:
+
+```bash
+PYTHONPATH=src .venv/bin/python tests/gitleaks_integration.py
+PYTHONPATH=src .venv/bin/python tests/real_tools_integration.py --output /tmp/quality-gate-integration
+```
+
+These commands are verification requirements, not a claim that all tests have passed.
+Release acceptance requires Linux, bootstrap and real-scanner integration results.
+PR advisories are deduplicated with at most ten UI hints; full advisory details
+remain collapsed in the Summary.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for
 development and security guidance.
@@ -128,7 +157,3 @@ development and security guidance.
 
 This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE)
 and [NOTICE](NOTICE).
-
-## CI Python bootstrap
-
-The action reuses an existing Python 3.9+ from the active virtual environment or PATH (including python3). If PyYAML is importable, no installation or network is needed. Otherwise it creates a job-local venv in RUNNER_TEMP and installs only PyYAML==6.0.3 from PyPI, without modifying the system or existing virtual environment. This fallback needs venv/ensurepip and network access to PyPI. No uv or Python download is introduced. Missing compatible Python, venv support, or failed installation produces an explicit startup error. Docker and policy-pinned scanner images remain runner prerequisites.

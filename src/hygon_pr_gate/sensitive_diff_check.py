@@ -505,7 +505,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
                         continue
                     line = min(changed)
                     for term, _, _ in _term_matches(part, self.runtime_terms,
-                            allowed_patterns=self.allowed_patterns, substring=True):
+                            allowed_patterns=self.allowed_patterns, substring=False):
                         key = (line, term.lower(), part)
                         if key not in self.seen:
                             self.seen.add(key)
@@ -883,7 +883,7 @@ def _text_runtime_matches(
                 line,
                 runtime_terms,
                 allowed_patterns=allowed_patterns,
-                substring=True,
+                substring=False,
             ):
                 result.append((number, "visible output", term, line))
     return result
@@ -982,7 +982,7 @@ def scan_sensitive_diff(
         term: str,
         evidence: str,
         remediation: str,
-        level: str = "blocker",
+        level: str = "advisory",
     ) -> None:
         key = (rule_id, path, line, term.lower())
         if key in seen:
@@ -1008,9 +1008,9 @@ def scan_sensitive_diff(
             continue
         path = change["path"]
         legacy_path_excluded = _matches_path(path, legacy_excluded)
-        legacy_level = (
-            "advisory" if _matches_path(path, legacy_advisory) else "blocker"
-        )
+        # Lexical matches cannot establish HYGON ownership or distinguish an
+        # external API/ABI from an obsolete product name. Keep manual review.
+        legacy_level = "advisory"
         if change["kind"] in {"A", "C", "R"} and not legacy_path_excluded:
             for term, _, _ in _term_matches(
                 path,
@@ -1110,7 +1110,7 @@ def scan_sensitive_diff(
                     "SENSITIVE_DIFF.HCU_RUNTIME_WORDING",
                     path,
                     number,
-                    "HCU user-visible output contains AMD/XGMI wording",
+                    "Visible output contains AMD/XGMI wording; ownership requires review",
                     term,
                     "{} contains token {!r}: {}.".format(sink, term, _snippet(value)),
                     "Use HCU device wording for hardware and HSL for HCU links; "
@@ -1123,7 +1123,7 @@ def scan_sensitive_diff(
         "sensitive-diff",
         "failed" if errors else "findings" if findings else "passed",
         detail=(
-            "检查所有新增文件及已有文件的新增行：DCU 按词匹配；AMD/XGMI 按子串检查可见输出，不限制目录或 HCU 标记。"
+            "检查新增内容；敏感词命中仅提示，需核实归属和语义，不要求替换合法上游接口、版权或真实后端名称。"
             + ("\n检查未完成：\n" + "\n".join(errors) if errors else "")
             + ("\n已跳过：\n" + "\n".join(skipped) if skipped else "")
         ),

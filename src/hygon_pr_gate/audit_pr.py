@@ -30,10 +30,11 @@ NATIVE_CHECKS = {
     "compliance": scan_compliance,
     "sensitive-diff": scan_sensitive_diff,
 }
-EXTERNAL_CHECKS = ("semgrep", "ruff", "quality-tools")
+EXTERNAL_CHECKS = ("gitleaks", "semgrep", "ruff", "quality-tools")
 ALL_CHECKS = tuple(NATIVE_CHECKS) + EXTERNAL_CHECKS
 
 CHECK_DISPLAY_NAMES = {
+    'gitleaks': ('Secrets & SAST', '密钥与代码安全'),
     "sensitive-diff": ("Sensitive Diff Text", "Sensitive Diff Text"),
     "identity": ("Commit Identity", "提交身份"),
     "git-encoding": ("File Integrity", "文件完整性"),
@@ -53,9 +54,9 @@ CHECK_GROUP_DISPLAY_NAMES = {
         "Repository & code quality",
         "仓库完整性与代码质量",
     ),
-    ("semgrep",): (
-        "Code Security",
-        "代码安全",
+    ("gitleaks", "semgrep"): (
+        "Secrets & SAST",
+        "密钥与代码安全",
     ),
 }
 
@@ -99,12 +100,23 @@ def _github_annotation(item: Dict[str, Any]) -> str:
 def _emit_github_annotations(data: Dict[str, Any], maximum: int = 50) -> None:
     findings = list(data.get("findings", []))
     findings.sort(key=lambda item: item.get("level") != "blocker")
-    for item in findings[:maximum]:
+    visible = []
+    seen = set()
+    for item in findings:
+        key = (item.get('rule_id'), item.get('path'), item.get('level'))
+        if item.get('level') == 'blocker' or key not in seen:
+            visible.append(item)
+        seen.add(key)
+    # Keep every finding in the summary, but do not flood the PR UI.
+    blockers = [f for f in visible if f.get('level') == 'blocker']
+    advisories = [f for f in visible if f.get('level') != 'blocker']
+    shown = (blockers + advisories[:10])[:maximum]
+    for item in shown:
         print(_github_annotation(item))
-    if len(findings) > maximum:
+    if len(findings) > len(shown):
         print(
             "::notice title=Quality Gate::{} findings omitted; see Job Summary".format(
-                len(findings) - maximum
+                len(findings) - len(shown)
             )
         )
     if data.get("operational_error"):

@@ -16,6 +16,7 @@ from hygon_quality_security.models import finding, scanner_status
 
 from .git_scope import blob_size, mode, read_blob
 from .artifacts import compiled_format
+from .yaml_checks import validate_yaml, is_template, comment_only_change
 
 
 HYGON_COPYRIGHT = "Copyright (c) 2026 Hygon Information Technology Co., Ltd."
@@ -343,6 +344,14 @@ def scan_syntax_and_workflows(
         except UnicodeDecodeError:
             continue
         suffix = PurePosixPath(path).suffix.lower()
+        existing_debt = False
+        if change['kind'] == 'M' and scope.get('merge_base'):
+            previous = read_blob(repo, scope['merge_base'], path, maximum)
+            if previous is not None:
+                try:
+                    existing_debt = comment_only_change(previous.decode('utf-8'), text)
+                except UnicodeDecodeError:
+                    pass
         if suffix in {".py", ".pyi"}:
             try:
                 ast.parse(text, filename=path)
@@ -355,13 +364,20 @@ def scan_syntax_and_workflows(
                         "Python 文件存在明确语法错误",
                         str(error.msg),
                         "修复 Python 语法后重新提交。",
-                        level="blocker",
+                        level="advisory" if existing_debt else "blocker",
                         line=error.lineno,
                     )
                 )
         if suffix in {".yaml", ".yml"}:
+            if is_template(path, text):
+                findings.append(finding(
+                    'QUALITY.YAML.TEMPLATE_REVIEW', 'native-syntax', path,
+                    '模板 YAML 需要渲染后验证', '识别为模板源文件，未按普通 YAML 验证',
+                    '使用项目的模板渲染和验证流程；此提示不代表模板已通过语法检查。',
+                    level='advisory'))
+                continue
             try:
-                yaml.safe_load(text)
+                validate_yaml(text, workflow=path.startswith('.github/workflows/'))
             except yaml.YAMLError as error:
                 mark = getattr(error, "problem_mark", None)
                 findings.append(
@@ -370,9 +386,9 @@ def scan_syntax_and_workflows(
                         "native-syntax",
                         path,
                         "YAML 文件存在明确语法错误",
-                        "YAML 无法解析",
+                        '基线已有语法问题，本次仅修改注释' if existing_debt else str(getattr(error, 'problem', None) or 'YAML 文档结构无效'),
                         "修复 YAML 语法或重复键后重新提交。",
-                        level="blocker",
+                        level="advisory" if existing_debt else "blocker",
                         line=(mark.line + 1) if mark is not None else None,
                     )
                 )

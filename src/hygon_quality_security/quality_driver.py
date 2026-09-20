@@ -10,8 +10,17 @@ import json
 import os
 import re
 import subprocess
+import yaml
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence
+
+# The driver is mounted by itself inside the quality-tools container. Keep
+# template classification aligned with the native checker without importing
+# an untrusted target repository module.
+def is_yaml_template(path, text):
+    return (not path.startswith('.github/workflows/')
+            and 'templates' in Path(path).parts
+            and bool(re.search(r'{{-?\s*(?:\.|if\b|range\b|include\b|with\b|end\b)', text)))
 
 
 def run(command: Sequence[str], *, cwd: Path, allowed=(0,)) -> subprocess.CompletedProcess:
@@ -169,8 +178,38 @@ YAMLLINT_RE = re.compile(
 )
 
 
+def distinct_typed_key_lines(text):
+    """Identify only same-spelling keys whose scalar tags are distinct."""
+    ignored = set()
+    seen = set()
+    def visit(node):
+        if node is None or id(node) in seen:
+            return
+        seen.add(id(node))
+        if isinstance(node, yaml.MappingNode):
+            tags = {}
+            for key, value in node.value:
+                if isinstance(key, yaml.ScalarNode):
+                    previous = tags.setdefault(key.value, set())
+                    if previous and key.tag not in previous:
+                        ignored.add((key.start_mark.line + 1, key.start_mark.column + 1))
+                    previous.add(key.tag)
+                visit(key)
+                visit(value)
+        elif isinstance(node, yaml.SequenceNode):
+            for item in node.value:
+                visit(item)
+    try:
+        for node in yaml.compose_all(text, Loader=yaml.SafeLoader):
+            visit(node)
+    except yaml.YAMLError:
+        return set()  # Never suppress findings on unparseable input.
+    return ignored
+
+
 def scan_yamllint(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
     yaml_paths = [path for path in paths if Path(path).suffix.lower() in {".yaml", ".yml"}]
+    yaml_paths = [path for path in yaml_paths if not is_yaml_template(path, (repo / path).read_text(encoding='utf-8'))]
     config = "{extends: default, rules: {document-start: disable, truthy: disable, line-length: {max: 120, level: warning}}}"
     findings = []
     for batch in batches(yaml_paths, 100):
@@ -184,6 +223,9 @@ def scan_yamllint(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
             if not match:
                 continue
             path, row, _column, severity, message, rule = match.groups()
+            if rule == 'key-duplicates' and (int(row), int(_column)) in distinct_typed_key_lines(
+                    (repo / path).read_text(encoding='utf-8')):
+                continue
             is_hard = rule in {"syntax", "key-duplicates"}
             findings.append(
                 {

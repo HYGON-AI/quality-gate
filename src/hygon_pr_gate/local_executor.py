@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from hygon_quality_security.models import scanner_status
 from hygon_quality_security.scanner_parsers import (
+    parse_gitleaks,
     parse_quality_tools,
     parse_ruff,
     parse_semgrep,
@@ -123,6 +124,20 @@ class LocalDockerExecutor:
             finding_count=len(findings),
         )
 
+    def _gitleaks(self, repo, scope, reports):
+        report = reports / 'gitleaks.json'
+        self._docker('gitleaks', repo, reports, [
+            'detect', '--source', '/repo', '--redact', '--report-format', 'json',
+            '--report-path', '/reports/gitleaks.json', '--log-opts',
+            '{}..{}'.format(scope['base'], scope['head']),
+        ], allowed=(0, 1))
+        # A missing report is a scanner failure, never a clean scan.
+        findings, summary = parse_gitleaks(
+            report, source_repo=repo, target_commit=scope['head'],
+            placeholder_config=self.quality['scanners']['gitleaks'].get('placeholder_filter', {}))
+        return findings, self._status('gitleaks', findings, str(self.images['gitleaks']),
+            '密钥检测仅提示、不阻断；已脱敏；忽略占位符 {} 个'.format(summary['ignored_placeholders']))
+
     def _semgrep(
         self, repo: Path, scope: Dict[str, Any], reports: Path, paths: List[str]
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -228,7 +243,7 @@ class LocalDockerExecutor:
         self,
         repo: Path,
         scope: Dict[str, Any],
-        scanner_names: Sequence[str] = ("semgrep", "ruff", "quality-tools"),
+        scanner_names: Sequence[str] = ("gitleaks", "semgrep", "ruff", "quality-tools"),
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         current_head = git(repo, "rev-parse", "HEAD").stdout.decode().strip()
         if current_head != scope["head"]:
@@ -241,6 +256,7 @@ class LocalDockerExecutor:
         with tempfile.TemporaryDirectory(prefix="hygon-pr-gate-") as directory:
             reports = Path(directory)
             scanners = {
+                'gitleaks': lambda: self._gitleaks(repo, scope, reports),
                 "semgrep": lambda: self._semgrep(repo, scope, reports, paths),
                 "ruff": lambda: self._ruff(repo, scope, reports, paths),
                 "quality-tools": lambda: self._quality_tools(repo, scope, reports, paths),

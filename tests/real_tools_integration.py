@@ -11,8 +11,13 @@ from hygon_pr_gate.audit_pr import run_gate
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = '# Copyright (c) 2026 Hygon Information Technology Co., Ltd.\n# SPDX-License-Identifier: Apache-2.0\n'
 CASES = {
+    'yaml-multidoc': ({'deploy.yaml': 'kind: Deployment\n---\nkind: Service\n'}, 0, '本检查通过'),
+    'yaml-typed-keys': ({'config.yaml': '1: number\n"1": string\nnull: empty\n"null": word\n'}, 0, '本检查通过'),
+    'yaml-block-string': ({'config.yaml': 'script: |\n  key: one\n  key: two\n  ---\n'}, 0, '本检查通过'),
+    'yaml-template': ({'charts/demo/templates/deploy.yaml': 'name: {{ .Values.name }}\n'}, 0, '模板 YAML 需要渲染后验证'),
+    'yaml-later-error': ({'deploy.yaml': 'kind: Deployment\n---\nvalue: [broken\n'}, 2, 'YAML'),
     'clean': ({'demo.py': HEADER + 'print(len("amd"))\nassert True, len("amd")\n'}, 0, '本检查通过'),
-    'wording': ({'demo.py': HEADER + 'print("{}".format("amd"))\nprint("\\namd")\n'}, 2, 'AMD/XGMI'),
+    'wording': ({'demo.py': HEADER + 'print("{}".format("amd"))\nprint("\\namd")\n'}, 0, 'AMD/XGMI'),
     'semgrep': ({'demo.py': HEADER + 'import subprocess\nsubprocess.run("echo hello", shell=True)\n'}, 0, '静态分析发现潜在安全问题'),
     'ruff': ({'demo.py': HEADER + 'value = 0\ndef f():\n    print(value)\n    value = 1\n'}, 2, 'F823'),
     'shellcheck': ({'run.sh': '#!/bin/sh\n' + HEADER + 'echo "$undefined_variable"\n'}, 0, 'Shell 脚本存在风险问题'),

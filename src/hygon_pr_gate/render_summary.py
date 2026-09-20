@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 
 SCANNER_DISPLAY_NAMES = {
+    'gitleaks': 'Gitleaks (advisory)',
     "sensitive-diff": "Sensitive Diff Text",
     "identity": "Built-in / 内置检查",
     "native-git": "Built-in / 内置检查",
@@ -21,7 +22,7 @@ SCANNER_DISPLAY_NAMES = {
 
 
 def _escape(value: Any) -> str:
-    return str(value).replace("|", "\\|").replace("\n", " ")
+    return str(value).replace('<', '&lt;').replace('>', '&gt;').replace("|", "\\|").replace("\n", " ")
 
 
 def render_summary(data: Dict[str, Any], output: Path) -> None:
@@ -82,16 +83,18 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
             lines.append("")
     if advisories:
         lines.extend(["", "## Advisories / 提示项（不阻断）", ""])
-        for item in advisories[:100]:
+        lines.extend(['<details><summary>展开提示详情（不阻断合并）</summary>', ''])
+        for item in advisories:
             lines.append(
-                "- `{}`：{}；{}".format(
+                "- `{}` 第 {} 行：{}；{}；{}".format(
                     _escape(item.get("path") or ""),
+                    item.get('line') or '-',
                     _escape(item.get("title") or ""),
+                    _escape(item.get('evidence') or ''),
                     _escape(item.get("remediation") or ""),
                 )
             )
-        if len(advisories) > 100:
-            lines.append("- 其余 {} 个提示已省略。".format(len(advisories) - 100))
+        lines.extend(['', '</details>'])
     if data.get("operational_error"):
         lines.extend(
             [
