@@ -5,7 +5,7 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 
 [English documentation](README.en.md)
 
-本文检查行为描述本修复分支，尚未发布新版本；现有 `v2.0.3` 标签行为不变。
+本文描述 `v2.0.5`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
 
 ## 快速接入
 
@@ -14,19 +14,23 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 2. 根据目标仓库实际情况调整 `pull_request.branches`。
 3. 将 `QUALITY_GATE_REF` 替换为已审核的发布 Tag 或完整 Commit SHA。
 
-以下示例使用当前稳定版本 [`v2.0.3`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.3)：
+以下示例使用固定版本 [`v2.0.5`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.5)：
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.3
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.5
     permissions:
       contents: read
 ```
 
 完整 Commit SHA 具有更强的不可变性，适合需要严格固定版本的仓库；如需集中升级，
 也可以使用经过审核的发布 Tag。
+
+已采用集中升级的仓库继续使用 `@stable`，无需每次修改调用文件。Runner Group 的
+Selected workflows 必须允许对应引用，例如
+`HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@refs/tags/stable`。
 
 在目标仓库的分支保护或 Ruleset 中，将以下检查设置为 Required Check：
 
@@ -70,6 +74,19 @@ Checks / All required checks
 这不等于完整的基线语义差分，也不能保证识别所有模板或语言版本。
 
 扫描器失败、镜像或报告缺失仍是 `Invalid Scan`，与源码违规分开说明，不能静默通过。
+
+### 文件头检查边界
+
+- 原版权/SPDX 声明允许空白、换行和常见注释包装变化；权利人、年份和声明内容不能删除或替换。
+- 完整标准 MIT、BSD-3-Clause 正文和 Apache-2.0 标准声明头可在没有 SPDX 时识别；
+  原正文的授权条件、免责声明被删除或改写仍阻断，新增 SPDX 不能替代原正文。
+- 仅有许可证名称、残缺正文或无法识别的变体，不被推断成已准入许可证。
+  来源不明、缺少声明的新增源码仅提示；含 HYGON 声明但既无 SPDX 又无可完整识别许可证的新增源码仍阻断。
+- 不要求所有上游代码添加 HYGON Copyright，不自动修改文件，不自动判断 H1/H2/H3 或原创归属。
+- 识别仍受策略文件头扫描行数限制；这不是任意许可证全文识别或法律适用性证明。
+
+摘要保留现有四个 Job 名称，默认展示结论、阻断/提示计数及实际版本和 SHA；
+扫描详情折叠，无适用文件显示“无需检查”。门禁通过不代表已经满足全部仓库合并规则。
 
 本仓库不包含全仓开源合规审计 Skill、全仓质量安全审计 Skill、历史重写 Skill、
 整改报告、目标仓库源码、凭据、缓存或 Runner 运行数据。
