@@ -9,10 +9,10 @@ from typing import Any, Dict, List
 SCANNER_DISPLAY_NAMES = {
     'gitleaks': 'Gitleaks (advisory)',
     "sensitive-diff": "Sensitive Diff Text",
-    "identity": "Built-in / 内置检查",
-    "native-git": "Built-in / 内置检查",
-    "native-syntax": "Built-in / 内置检查",
-    "compliance": "Built-in / 内置检查",
+    "identity": "身份检查",
+    "native-git": "文件完整性",
+    "native-syntax": "语法与 Workflow 检查",
+    "compliance": "许可证与版权检查",
     "semgrep": "Semgrep",
     "ruff": "Ruff",
     "quality-tools": "Quality Tools / 质量工具",
@@ -34,11 +34,27 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
         "findings": "Findings / 有发现",
         "failed": "Failed / 执行失败",
         "disabled": "Skipped / 未执行",
+        "not-applicable": "无需检查",
     }
     display_name = _escape(data.get("display_name") or "Unknown Check")
     display_name_zh = _escape(data.get("display_name_zh") or "未知检查")
     lines: List[str] = [
-        "# Quality Gate · PR 增量门禁",
+        "# {}".format(display_name),
+        "",
+        "**{}**".format(
+            "❌ 存在阻断问题；⚠️ 扫描无效" if data.get('operational_error') and blockers
+            else "⚠️ Invalid Scan / 扫描无效" if data.get('operational_error')
+            else "❌ Blocked / 本检查阻断" if blockers
+            else "内置预检通过，完整门禁未执行" if data.get('partial')
+            else "✅ Passed / 本检查通过"),
+        "",
+        "- Blockers / 阻断问题：{}".format(len(blockers)),
+        "- Advisories / 提示问题：{}".format(len(advisories)),
+        "- 门禁版本：`{}` · 执行 SHA：`{}`".format(
+            _escape(data.get('gate_version') or '未标记'),
+            _escape(data.get('gate_sha') or '未知')),
+        "",
+        "<details><summary>扫描范围与工具详情</summary>",
         "",
         "- Repository / 仓库：`{}`".format(_escape(data["repository"])),
         "- Check / 检查项：`{}`（{}）".format(display_name, display_name_zh),
@@ -47,8 +63,6 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
         ),
         "- Changed Files / 变更文件：{}".format(len(data["scope"]["changes"])),
         "- Commits / 引入提交：{}".format(len(data["scope"]["commits"])),
-        "- Blockers / 阻断问题：{}".format(len(blockers)),
-        "- Advisories / 提示问题：{}".format(len(advisories)),
         "",
         "## Results / 检查结果",
         "",
@@ -65,21 +79,24 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
                 _escape(item.get("detail") or ""),
             )
         )
+    lines.extend(['', '</details>'])
     if blockers:
         lines.extend(["", "## Required Changes / 必须修改", ""])
+        locations = {}
         for item in blockers:
-            location = "`{}`".format(_escape(item.get("path") or ""))
-            if item.get("line"):
-                location += " 第 {} 行".format(item["line"])
+            locations.setdefault((item.get('path') or '', item.get('line')), []).append(item)
+        for (path, line), items in locations.items():
+            location = "`{}`".format(_escape(path))
+            if line:
+                location += " 第 {} 行".format(line)
             lines.append("### {}".format(location))
             lines.append("")
-            lines.append("- **Issue / 问题**：{}".format(_escape(item["title"])))
-            lines.append("- **Reason / 原因**：{}".format(_escape(item.get("evidence") or "")))
-            lines.append(
-                "- **Remediation / 修改要求**：{}".format(
-                    _escape(item.get("remediation") or "")
-                )
-            )
+            for item in items:
+                lines.append("- **{}**：{}".format(_escape(item['title']), _escape(item.get('evidence') or '')))
+            remedies = dict.fromkeys(item.get('remediation') or '' for item in items)
+            for remedy in remedies:
+                if remedy:
+                    lines.append('- 修复：{}'.format(_escape(remedy)))
             lines.append("")
     if advisories:
         lines.extend(["", "## Advisories / 提示项（不阻断）", ""])
@@ -105,24 +122,5 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
                 "- 扫描器执行失败不得解释为通过。",
             ]
         )
-    lines.extend(
-        [
-            "",
-            "## Decision / 判定",
-            "",
-            "**{}**".format(
-                "❌ 存在阻断问题；⚠️ 扫描无效"
-                if data.get("operational_error") and blockers
-                else "⚠️ Invalid Scan / 扫描无效"
-                if data.get("operational_error")
-                else "❌ Blocked / 本检查阻断"
-                if blockers
-                else "内置预检通过，完整门禁未执行"
-                if data.get("partial")
-                else "✅ Passed / 本检查通过"
-            ),
-            "",
-        ]
-    )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines), encoding="utf-8")

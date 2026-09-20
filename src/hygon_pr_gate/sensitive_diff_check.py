@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
-"""Block legacy DCU tokens and HCU-visible AMD/XGMI wording added by a PR."""
+"""Advise on legacy DCU tokens and visible AMD/XGMI wording added by a PR."""
 
 import ast
 import fnmatch
@@ -170,6 +170,12 @@ def _candidate_token_spans(
     uppercase_terms = {term.upper() for term in terms if term}
     for word in WORD_RE.finditer(value):
         raw = word.group(0)
+        # Camel splitting turns complete mixed-case words (AmD, XgMi) into
+        # unrelated pieces. Recover only a whole word, never a substring.
+        span = (word.start(), word.end())
+        if raw.upper() in uppercase_terms and span not in seen:
+            seen.add(span)
+            yield raw, word.start(), word.end()
         for term in uppercase_terms:
             cursor = 0
             while True:

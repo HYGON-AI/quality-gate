@@ -3,6 +3,7 @@
 """Real pinned Gitleaks smoke test. Requires preinstalled policy image."""
 import argparse
 import secrets
+import string
 import shutil
 import subprocess
 import tempfile
@@ -37,7 +38,11 @@ def main():
         git('commit', '-qm', 'baseline')
         base = git('rev-parse', 'HEAD')
         # Generated test data, not a credential for any service.
-        marker = secrets.token_hex(24)
+        # Hex samples occasionally fall below the scanner's entropy cutoff.
+        # Shuffle a complete alphabet: entropy is fixed and no live credential
+        # or recognizable service-token prefix is used.
+        alphabet = string.ascii_letters + string.digits
+        marker = ''.join(secrets.SystemRandom().sample(alphabet, len(alphabet)))
         (repo / 'config.py').write_text('api_key = "{}"\n'.format(marker))
         git('add', '.')
         git('commit', '-qm', 'synthetic fixture')

@@ -111,7 +111,7 @@ def assert_clean_pr_passes(root: Path) -> None:
     summary, code = run_gate(arguments(repo, base, head, root / "clean.md"))
     assert code == 0, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
-    assert "# Quality Gate · PR 增量门禁" in content
+    assert content.startswith('# All Checks')
     assert "Check / 检查项：`All Checks`（全部检查）" in content
     assert "内置预检通过，完整门禁未执行" in content
     assert "Blockers / 阻断问题：0" in content
@@ -199,7 +199,7 @@ def assert_replacement_character_blocks(root: Path) -> None:
     assert code == 2, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
     assert "Check / 检查项：`File Integrity`（文件完整性）" in content
-    assert "Built-in / 内置检查" in content
+    assert "文件完整性" in content
     assert "`git-encoding`" not in content
     assert "native-git" not in content
     assert "Unicode 替换字符" in content
@@ -855,8 +855,9 @@ def assert_shared_workflow_contract() -> None:
     assert "hygon_pr_gate.profile_admission" not in workflow_text
     assert "Repository policy" not in workflow_text
     assert "# All required checks · PR 门禁汇总" in workflow_text
-    assert "Merge Blocked / 阻断合并" in workflow_text
-    assert "Merge Allowed / 允许合并" in workflow_text
+    assert "质量门禁未通过" in workflow_text
+    assert "是否可合并以仓库保护规则为准" in workflow_text
+    assert "Merge Allowed / 允许合并" not in workflow_text
     assert "HYGON-AI/open-source-governance" not in workflow_text
     assert "repository: ${{ job.workflow_repository }}" in workflow_text
     assert "ref: ${{ job.workflow_sha }}" in workflow_text

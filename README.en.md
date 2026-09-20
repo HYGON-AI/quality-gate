@@ -6,7 +6,7 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes the unreleased fix branch. The existing `v2.0.3` tag is unchanged.
+This document describes `v2.0.5`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
 
 ## Quick start
 
@@ -16,13 +16,13 @@ This document describes the unreleased fix branch. The existing `v2.0.3` tag is 
 3. Replace `QUALITY_GATE_REF` with a reviewed release tag or full Commit SHA.
 
 The following example uses the current stable release
-[`v2.0.3`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.3):
+[`v2.0.5`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.5):
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.3
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.5
     permissions:
       contents: read
 ```
@@ -30,6 +30,10 @@ jobs:
 A full Commit SHA provides stronger immutability and is suitable for
 repositories that require strict version pinning. A reviewed release tag may
 be used when centralized upgrades are preferred.
+
+Existing `@stable` consumers need no caller change. The runner group's selected
+workflows must allow the chosen reference, such as
+`HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@refs/tags/stable`.
 
 Configure the following Required Check in the target repository's branch
 protection settings or Ruleset:
@@ -88,6 +92,23 @@ Recognized Helm templates require rendered validation, not a claimed syntax pass
 Existing syntax debt is advisory only for conservative comment-only changes, not a
 complete semantic baseline comparison. Unsupported language versions still need review.
 Scanner failures or missing reports remain invalid scans.
+
+### Header preservation
+
+Whitespace, line wrapping and common comment wrappers do not change a notice.
+Removing or replacing original copyright/SPDX declarations still blocks.
+Complete standard MIT/BSD-3-Clause bodies and the Apache-2.0 boilerplate notice
+are recognized without SPDX. Removing their original terms or disclaimers
+blocks even if SPDX remains. Names alone, partial bodies and unknown variants
+do not establish license approval. Unknown-origin new files with missing
+headers remain advisory; a new HYGON notice lacking both SPDX and a recognized
+complete license remains blocking. No source is automatically rewritten and
+H1/H2/H3/originality is not inferred. Recognition is bounded by the configured
+header line limit and is not a proof of legal applicability.
+
+The four existing job names remain stable. Summaries show the decision,
+counts, actual version and SHA first; details are folded and scanners with no
+applicable files say so. Passing the gate does not grant permission to merge.
 
 ## Version consistency
 

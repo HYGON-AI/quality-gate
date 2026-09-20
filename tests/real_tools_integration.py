@@ -7,10 +7,30 @@ import subprocess
 import tempfile
 from pathlib import Path
 from hygon_pr_gate.audit_pr import run_gate
+from hygon_pr_gate.header_notices import MIT_NOTICE, BSD_NOTICE, APACHE_NOTICE
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = '# Copyright (c) 2026 Hygon Information Technology Co., Ltd.\n# SPDX-License-Identifier: Apache-2.0\n'
+COPYRIGHT = '# Copyright (c) 2026 Hygon Information Technology Co., Ltd.\n'
+
+
+def traditional(body):
+    return COPYRIGHT + '#\n' + '\n'.join('# ' + line for line in body.splitlines()) + '\nVALUE = 1\n'
+
+
+HEADER_BASELINES = {
+    'header-reflow': traditional(MIT_NOTICE),
+    'header-body-deletion': traditional(MIT_NOTICE),
+    'header-clause-deletion': traditional(BSD_NOTICE),
+}
 CASES = {
+    'header-mit': ({'notice.py': traditional(MIT_NOTICE)}, 0, '本检查通过'),
+    'header-bsd': ({'notice.py': traditional(BSD_NOTICE)}, 0, '本检查通过'),
+    'header-apache': ({'notice.py': traditional(APACHE_NOTICE)}, 0, '本检查通过'),
+    'header-reflow': ({'notice.py': '"""Copyright (c) 2026 Hygon Information Technology Co., Ltd.\n\n'
+                        + ' '.join(MIT_NOTICE.split()) + '\n"""\nVALUE = 2\n'}, 0, '本检查通过'),
+    'header-body-deletion': ({'notice.py': COPYRIGHT + '# SPDX-License-Identifier: MIT\nVALUE = 2\n'}, 2, '原传统许可证正文'),
+    'header-clause-deletion': ({'notice.py': traditional(BSD_NOTICE).replace('MERCHANTABILITY', '')}, 2, '原传统许可证正文'),
     'yaml-multidoc': ({'deploy.yaml': 'kind: Deployment\n---\nkind: Service\n'}, 0, '本检查通过'),
     'yaml-typed-keys': ({'config.yaml': '1: number\n"1": string\nnull: empty\n"null": word\n'}, 0, '本检查通过'),
     'yaml-block-string': ({'config.yaml': 'script: |\n  key: one\n  key: two\n  ---\n'}, 0, '本检查通过'),
@@ -50,6 +70,8 @@ def main():
             git('config', 'user.name', 'Hygon Developer')
             git('config', 'user.email', 'developer@hygon.com')
             (repo / 'README.md').write_text('Integration fixture\n')
+            if name in HEADER_BASELINES:
+                (repo / 'notice.py').write_text(HEADER_BASELINES[name])
             if name == 'quality-incremental':
                 (repo / 'config.yml').write_text('key: one\nkey: two\n')
             git('add', '.')

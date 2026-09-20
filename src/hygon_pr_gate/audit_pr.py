@@ -4,6 +4,7 @@
 """Run the deterministic incremental HYGON pull-request gate."""
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -158,6 +159,8 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
     policy_root = args.policy_root.resolve()
     summary = args.summary.resolve()
     data: Dict[str, Any] = {
+        "gate_version": os.environ.get('QUALITY_GATE_VERSION', '未标记'),
+        "gate_sha": os.environ.get('QUALITY_GATE_SHA', '未知'),
         "repository": args.repository,
         "scope": {
             "base": args.base,

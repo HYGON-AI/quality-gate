@@ -17,6 +17,8 @@ from hygon_quality_security.models import finding, scanner_status
 from .git_scope import blob_size, mode, read_blob
 from .artifacts import compiled_format
 from .yaml_checks import validate_yaml, is_template, comment_only_change
+from .header_notices import (comment_header, declarations, contains_declaration,
+                             traditional_notices, preserves_traditional)
 
 
 HYGON_COPYRIGHT = "Copyright (c) 2026 Hygon Information Technology Co., Ltd."
@@ -451,22 +453,25 @@ def _normalized_legal_lines(data: bytes) -> List[str]:
     )
     if not text:
         return []
-    return [line.rstrip() for line in text.split("\n")]
+    return [' '.join(paragraph.split()) for paragraph in re.split(r'\n\s*\n', text) if paragraph.strip()]
 
 
 def _preserves_legal_content(base: bytes, current: bytes) -> bool:
-    """Return true when every original line remains in its original order.
+    """Preserve original paragraphs, ignoring their physical wrapping.
 
-    Legal and attribution files may receive scoped additions anywhere in the
-    document. Requiring the complete base document to remain one contiguous
-    substring incorrectly treats an inserted attribution as a rewrite.
+    Additions around original paragraphs are allowed; inserting arbitrary
+    words inside a clause (for example a negation) is not a formatting change.
     """
 
     original = _normalized_legal_lines(base)
-    candidate = iter(_normalized_legal_lines(current))
-    return all(
-        any(current_line == line for current_line in candidate) for line in original
-    )
+    candidate = ' '.join(_normalized_legal_lines(current))
+    cursor = 0
+    for paragraph in original:
+        match = re.search(r'(?<!\S)' + re.escape(paragraph) + r'(?!\S)', candidate[cursor:])
+        if not match:
+            return False
+        cursor += match.end()
+    return True
 
 
 ROOT_IMMUTABLE_LEGAL_FILES = {
@@ -576,11 +581,13 @@ def scan_compliance(
         if raw is None or compiled_format(raw) or b"\0" in raw[:8192]:
             continue
         text = raw.decode("utf-8", errors="replace")
-        current_header = _header(text, header_lines)
-        license_matches = list(SPDX_RE.finditer(current_header))
+        current_header = comment_header(text, header_lines)
+        license_matches = list(re.finditer(r'^SPDX-License-Identifier:\s*([^\n]+)', current_header, re.M | re.I))
         licenses = [match.group(1) for match in license_matches]
+        traditional = traditional_notices(current_header)
+        recognized_license = any(license_id in allowed for license_id, _ in traditional)
         for license_match in license_matches:
-            expression = license_match.group(1)
+            expression = license_match.group(1).strip()
             line_number = _line_for_index(current_header, license_match.start())
             if change["kind"] not in {"A", "C"} and line_number not in scope["changed_lines"].get(path, set()):
                 continue
@@ -610,14 +617,9 @@ def scan_compliance(
             old_path = change.get("old_path") or path
             base_raw = read_blob(repo, scope["merge_base"], old_path, int(policy["git"]["max_text_scan_bytes"]))
             if base_raw is not None:
-                base_header = _header(base_raw.decode("utf-8", errors="replace"), header_lines)
-                original_lines = [
-                    line.strip()
-                    for line in base_header.splitlines()
-                    if COPYRIGHT_RE.search(line) or SPDX_RE.search(line)
-                ]
-                for original in original_lines:
-                    if original and original not in current_header:
+                base_header = comment_header(base_raw.decode("utf-8", errors="replace"), header_lines)
+                for original in declarations(base_header):
+                    if not contains_declaration(current_header, original):
                         findings.append(
                             finding(
                                 "COPYRIGHT.ORIGINAL_HEADER_REMOVED",
@@ -630,31 +632,40 @@ def scan_compliance(
                             )
                         )
                         break
+                for license_id, original_body in traditional_notices(base_header):
+                    if not preserves_traditional(current_header, original_body):
+                        findings.append(finding(
+                            'LICENSE.ORIGINAL_NOTICE_REMOVED', 'compliance', path,
+                            'PR 删除或改写了原传统许可证正文',
+                            '{} 原许可证正文的授权、条件或免责声明未完整保留'.format(license_id),
+                            '恢复原许可证正文；增加 SPDX 不能代替原声明。允许空白和注释包装调整。',
+                            level='blocker'))
+                        break
         if change["kind"] != "A":
             continue
 
-        has_copyright = bool(COPYRIGHT_RE.search(current_header))
-        if HYGON_COPYRIGHT in current_header and not licenses:
+        has_copyright = any(re.match(r'^(?:portions\s+)?copyright\b', item, re.I) for item in declarations(current_header))
+        if contains_declaration(current_header, HYGON_COPYRIGHT) and not licenses and not recognized_license:
             findings.append(
                 finding(
                     "COPYRIGHT.NEW_HYGON_SOURCE_SPDX_MISSING",
                     "compliance",
                     path,
                     "新增 HYGON 源码文件头缺少 SPDX",
-                    "文件头包含 HYGON Copyright，但未检测到 SPDX-License-Identifier",
+                    "文件头包含 HYGON Copyright，但未检测到 SPDX 或可完整识别的传统许可证声明",
                     "根据仓库实际许可证补充 SPDX；不得凭名称机械选择许可证。",
                     level="blocker",
                 )
             )
             continue
-        if not has_copyright or not licenses:
+        if not has_copyright or (not licenses and not recognized_license):
             findings.append(
                 finding(
                     "COPYRIGHT.NEW_SOURCE_HEADER_REVIEW",
                     "compliance",
                     path,
                     "新增源码的版权和许可证归属待复核",
-                    "文件头未同时检测到 Copyright 和 SPDX；PR 门禁不推断原创、上游或第三方归属",
+                    "文件头未同时检测到 Copyright 和 SPDX/完整可识别许可证正文；PR 门禁不推断原创、上游或第三方归属",
                     "原创源码补充与仓库许可证一致的 HYGON 文件头；上游或第三方源码保留原声明并登记来源。定期全仓扫描将继续复核。",
                     level="advisory",
                 )
