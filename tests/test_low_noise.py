@@ -11,6 +11,8 @@ from hygon_pr_gate.policy import load_policy
 from hygon_quality_security.scanner_parsers import parse_gitleaks
 from hygon_pr_gate.sensitive_diff_check import scan_sensitive_diff
 from hygon_pr_gate.audit_pr import _emit_github_annotations
+from hygon_quality_security.secret_placeholders import deterministic_placeholder_reason
+from hygon_pr_gate.render_summary import render_summary
 import contextlib
 import io
 
@@ -73,6 +75,32 @@ class YamlRegressionTests(unittest.TestCase):
 
 
 class AdvisoryRegressionTests(unittest.TestCase):
+    def test_placeholder_requires_source_evidence(self):
+        policy = load_policy(ROOT / 'policies', 'any/project')
+        config = policy['quality_security']['scanners']['gitleaks']['placeholder_filter']
+        item = {'RuleID': 'generic-api-key', 'File': 'docs/example.md', 'StartLine': 1}
+        for line, expected in [('api_key = "your-api-key"', 'placeholder-literal'),
+                               ('api_key = "${API_KEY}"', 'template-reference'),
+                               ('api_key = "synthetic-not-an-approved-placeholder"', None)]:
+            with patch('hygon_quality_security.secret_placeholders._source_line', return_value=line):
+                self.assertEqual(deterministic_placeholder_reason(item, source_repo=Path('.'),
+                    target_commit='a'*40, config=config), expected)
+        with patch('hygon_quality_security.secret_placeholders._source_line', return_value=None):
+            self.assertIsNone(deterministic_placeholder_reason(item, source_repo=Path('.'),
+                target_commit='a'*40, config=config))
+
+    def test_summary_keeps_advisory_details_and_escapes_html(self):
+        findings = [{'path': 'a.py', 'line': i+1, 'title': 'review', 'level': 'advisory',
+                     'evidence': '<script>sample</script>', 'remediation': 'verify'} for i in range(120)]
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / 'summary.md'
+            render_summary({'repository': 'test/project', 'findings': findings,
+                            'scope': {'merge_base': 'a'*40, 'head': 'b'*40, 'changes': [], 'commits': []}}, summary)
+            text = summary.read_text(encoding='utf-8')
+            self.assertIn('第 120 行', text)
+            self.assertNotIn('<script>', text)
+            self.assertIn('&lt;script&gt;', text)
+
     def test_secrets_are_advisory_and_redacted(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'report.json'
