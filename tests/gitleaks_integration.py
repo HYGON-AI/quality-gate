@@ -3,9 +3,11 @@
 """Real pinned Gitleaks smoke test. Requires preinstalled policy image."""
 import argparse
 import secrets
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+import yaml
 
 from hygon_pr_gate.audit_pr import run_gate
 
@@ -14,6 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     with tempfile.TemporaryDirectory(prefix='gate-secret-test-') as temporary:
+        # Hosted test runners are smaller than production. Only resource limits
+        # change; scanner image, rules and decision policy remain identical.
+        policy_root = Path(temporary) / 'policies'
+        shutil.copytree(ROOT / 'policies', policy_root)
+        for policy_file in (policy_root / 'pr').glob('*.yaml'):
+            policy = yaml.safe_load(policy_file.read_text(encoding='utf-8'))
+            policy['external_scanners']['docker_cpus'] = 2
+            policy['external_scanners']['docker_memory'] = '2g'
+            policy_file.write_text(yaml.safe_dump(policy), encoding='utf-8')
         repo = Path(temporary) / 'repo'
         repo.mkdir()
         def git(*args):
@@ -32,7 +43,7 @@ def main():
         git('commit', '-qm', 'synthetic fixture')
         summary, code = run_gate(argparse.Namespace(
             repo=repo, repository='test/fixture', base=base, head=git('rev-parse', 'HEAD'),
-            policy_root=ROOT / 'policies', summary=Path(temporary) / 'summary.md',
+            policy_root=policy_root, summary=Path(temporary) / 'summary.md',
             checks='gitleaks', native_only=False))
         text = summary.read_text(encoding='utf-8')
         assert code == 0, 'Secret-only findings must not block: ' + text.replace(marker, '[REDACTED]')
