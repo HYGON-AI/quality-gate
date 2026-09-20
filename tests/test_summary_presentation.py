@@ -39,6 +39,15 @@ class SummaryPresentationTests(unittest.TestCase):
         self.assertNotIn('本检查通过', self.render(operational_error='scanner failed'))
         self.assertNotIn('本检查通过', self.render(partial=True))
 
+    def test_same_location_groups_without_losing_evidence(self):
+        text = self.render(findings=[
+            dict(level='blocker', path='a.yaml', line=2, title='native', evidence='evidence one'),
+            dict(level='blocker', path='a.yaml', line=2, title='yamllint', evidence='evidence two')])
+        self.assertEqual(text.count('### `a.yaml` 第 2 行'), 1)
+        self.assertIn('evidence one', text)
+        self.assertIn('evidence two', text)
+        self.assertIn('Blockers / 阻断问题：2', text)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -82,19 +82,21 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
     lines.extend(['', '</details>'])
     if blockers:
         lines.extend(["", "## Required Changes / 必须修改", ""])
+        locations = {}
         for item in blockers:
-            location = "`{}`".format(_escape(item.get("path") or ""))
-            if item.get("line"):
-                location += " 第 {} 行".format(item["line"])
+            locations.setdefault((item.get('path') or '', item.get('line')), []).append(item)
+        for (path, line), items in locations.items():
+            location = "`{}`".format(_escape(path))
+            if line:
+                location += " 第 {} 行".format(line)
             lines.append("### {}".format(location))
             lines.append("")
-            lines.append("- **Issue / 问题**：{}".format(_escape(item["title"])))
-            lines.append("- **Reason / 原因**：{}".format(_escape(item.get("evidence") or "")))
-            lines.append(
-                "- **Remediation / 修改要求**：{}".format(
-                    _escape(item.get("remediation") or "")
-                )
-            )
+            for item in items:
+                lines.append("- **{}**：{}".format(_escape(item['title']), _escape(item.get('evidence') or '')))
+            remedies = dict.fromkeys(item.get('remediation') or '' for item in items)
+            for remedy in remedies:
+                if remedy:
+                    lines.append('- 修复：{}'.format(_escape(remedy)))
             lines.append("")
     if advisories:
         lines.extend(["", "## Advisories / 提示项（不阻断）", ""])
