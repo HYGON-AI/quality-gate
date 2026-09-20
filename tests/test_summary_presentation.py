@@ -26,9 +26,10 @@ class SummaryPresentationTests(unittest.TestCase):
         self.assertNotIn('Repository /', visible)
         self.assertEqual(text.count('本检查通过'), 1)
 
-    def test_no_targets_is_not_passed(self):
+    def test_no_target_scanner_row_is_not_marked_passed(self):
         text = self.render(statuses=[dict(scanner='ruff', state='not-applicable', detail='无 Python 变更')])
         self.assertIn('| Ruff | 无需检查 |', text)
+        self.assertNotIn('| Ruff | Passed / 通过 |', text)
 
     def test_blockers_remain_outside_details(self):
         text = self.render(findings=[dict(level='blocker', title='broken syntax', path='a.py', line=3)])
