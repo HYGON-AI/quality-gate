@@ -855,7 +855,8 @@ def assert_shared_workflow_contract() -> None:
     assert "hygon_pr_gate.profile_admission" not in workflow_text
     assert "Repository policy" not in workflow_text
     assert "# All required checks · PR 门禁汇总" in workflow_text
-    assert "Merge Blocked / 阻断合并" in workflow_text
+    assert "质量门禁未通过" in workflow_text
+    assert "是否可合并以仓库保护规则为准" in workflow_text
     assert "Merge Allowed / 允许合并" in workflow_text
     assert "HYGON-AI/open-source-governance" not in workflow_text
     assert "repository: ${{ job.workflow_repository }}" in workflow_text
