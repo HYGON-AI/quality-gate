@@ -1,0 +1,2 @@
+# Shell entrypoints must work in Linux, including archives made on Windows.
+*.sh text eol=lf
