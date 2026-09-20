@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from hygon_pr_gate.native_checks import scan_compliance
 from hygon_pr_gate.policy import load_policy
-from hygon_pr_gate.header_notices import MIT_NOTICE, BSD_NOTICE, APACHE_NOTICE, traditional_notices, comment_header
+from hygon_pr_gate.header_notices import MIT_NOTICE, BSD_NOTICE, APACHE_NOTICE
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,6 +28,11 @@ class HeaderPreservationTests(unittest.TestCase):
     def test_copyright_reflow_and_comment_wrapper(self):
         old = '# Copyright (c) 2026 Original Author Company.\n# SPDX-License-Identifier: MIT\n'
         new = '/* Copyright (c) 2026\n * Original Author Company.\n * SPDX-License-Identifier: MIT\n */\n'
+        self.assertEqual(self.scan(old, new), [])
+
+    def test_doxygen_comment_wrapper(self):
+        old = '# Copyright Original Author\n# SPDX-License-Identifier: MIT\n'
+        new = '/** Copyright Original Author\n * SPDX-License-Identifier: MIT\n */\n'
         self.assertEqual(self.scan(old, new), [])
 
     def test_reflowed_original_holder_cannot_be_deleted(self):
@@ -50,6 +55,10 @@ class HeaderPreservationTests(unittest.TestCase):
 
     def test_license_in_code_string_is_not_header(self):
         text = '# Copyright Original Author\nvalue = """' + MIT_NOTICE + '"""\n'
+        self.assertEqual([f['level'] for f in self.scan(None, text)], ['advisory'])
+
+    def test_commented_notice_inside_code_string_is_not_header(self):
+        text = '# Copyright Original Author\nvalue = """\n' + render_notice(MIT_NOTICE) + '\n"""\n'
         self.assertEqual([f['level'] for f in self.scan(None, text)], ['advisory'])
 
     def test_unknown_traditional_is_advisory(self):

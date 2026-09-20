@@ -83,7 +83,7 @@ def comment_header(text: str, limit: int) -> str:
     """Extract comment text with original line positions; ignore code literals.
 
     Supports line comments, C blocks and standalone triple-quoted headers.
-    Executable lines and blank lines separate declarations. This intentionally
+    The first executable line ends the header. Blank lines separate declarations. This intentionally
     does not attempt to parse arbitrary language-specific string syntax.
     """
     result: List[str] = []
@@ -100,9 +100,13 @@ def comment_header(text: str, limit: int) -> str:
             opener = next(p for p in ('/*', '<!--', '"""', "'''") if line.startswith(p))
             end = {'/*': '*/', '<!--': '-->'}.get(opener, opener)
             content, sep, _ = line[len(opener):].partition(end)
+            if opener == '/*':
+                content = re.sub(r'^\* ?', '', content)
             closing = None if sep else end
         else:
             match = re.match(r'^(?:\#+|//+|;+|--)\s?(.*)$', line)
+            if not match and line:
+                break
             content = match.group(1) if match else ''
         result.append(content.strip())
     return '\n'.join(result)
