@@ -857,7 +857,7 @@ def assert_shared_workflow_contract() -> None:
     assert "# All required checks · PR 门禁汇总" in workflow_text
     assert "质量门禁未通过" in workflow_text
     assert "是否可合并以仓库保护规则为准" in workflow_text
-    assert "Merge Allowed / 允许合并" in workflow_text
+    assert "Merge Allowed / 允许合并" not in workflow_text
     assert "HYGON-AI/open-source-governance" not in workflow_text
     assert "repository: ${{ job.workflow_repository }}" in workflow_text
     assert "ref: ${{ job.workflow_sha }}" in workflow_text
