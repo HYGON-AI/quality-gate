@@ -143,7 +143,7 @@ class LocalDockerExecutor:
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         targets = [path for path in paths if PurePosixPath(path).suffix.lower() in SOURCE_EXTENSIONS]
         if not targets:
-            return [], scanner_status("semgrep", "passed", detail="PR 没有适用的变更源码")
+            return [], scanner_status("semgrep", "not-applicable", detail="无适用的变更源码")
         report = reports / "semgrep.json"
         rules = self.policy_root / "semgrep"
         self._docker(
@@ -186,7 +186,7 @@ class LocalDockerExecutor:
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         targets = [path for path in paths if PurePosixPath(path).suffix.lower() in {".py", ".pyi"}]
         if not targets:
-            return [], scanner_status("ruff", "passed", detail="PR 没有 Python 变更")
+            return [], scanner_status("ruff", "not-applicable", detail="无 Python 变更")
         report = reports / "ruff.json"
         self._docker(
             "ruff",

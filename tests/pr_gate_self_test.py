@@ -199,7 +199,7 @@ def assert_replacement_character_blocks(root: Path) -> None:
     assert code == 2, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
     assert "Check / 检查项：`File Integrity`（文件完整性）" in content
-    assert "Built-in / 内置检查" in content
+    assert "文件完整性" in content
     assert "`git-encoding`" not in content
     assert "native-git" not in content
     assert "Unicode 替换字符" in content

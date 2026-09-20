@@ -14,6 +14,9 @@ on:
 permissions:
   contents: read
 
+env:
+  QUALITY_GATE_VERSION: v2.0.5-dev
+
 jobs:
   incremental_check:
     name: ${{ matrix.display_name }}
@@ -73,6 +76,7 @@ jobs:
           CHECK_SCANNERS: ${{ matrix.scanners }}
           QUALITY_GATE_ROOT: ${{ steps.quality_gate.outputs.gate-path }}
           HYGON_PYTHON: ${{ steps.quality_gate.outputs.python-path }}
+          QUALITY_GATE_SHA: ${{ job.workflow_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -124,30 +128,35 @@ jobs:
       - name: result
         env:
           CHECKS_RESULT: ${{ needs.incremental_check.result }}
+          QUALITY_GATE_SHA: ${{ job.workflow_sha }}
         shell: bash
         run: |
           set -euo pipefail
 
           if test "$CHECKS_RESULT" = "success"; then
             display_result="Passed / 通过"
-            decision="✅ **Merge Allowed / 允许合并**：all checks passed / 所有检查均已通过。"
+            decision="✅ **质量门禁通过；是否可合并以仓库保护规则为准。**"
             result=0
           else
             display_result="Failed / 未通过"
-            decision="❌ **Merge Blocked / 阻断合并**：at least one check failed or produced an invalid result / 至少一项检查失败或扫描无效。"
+            decision="❌ **质量门禁未通过：至少一项检查失败、未完成或扫描无效。**"
             result=1
           fi
 
           {
             echo "# All required checks · PR 门禁汇总"
             echo ""
+            echo "$decision"
+            echo ""
+            echo "门禁版本：${QUALITY_GATE_VERSION} · 执行 SHA：${QUALITY_GATE_SHA}"
+            echo ""
+            echo '<details><summary>汇总状态</summary>'
+            echo ""
             echo "| Check Group / 检查组 | Status / 状态 |"
             echo "| --- | --- |"
             echo "| Incremental Checks / 增量检查 | $display_result |"
             echo ""
-            echo "## Decision / 判定"
-            echo ""
-            echo "$decision"
+            echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit "$result"
