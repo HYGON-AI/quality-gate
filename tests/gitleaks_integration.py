@@ -51,6 +51,38 @@ def main():
         assert marker not in text, 'Secret value must never appear in summary'
         assert 'Blockers / 阻断问题：0' in text
         print('Pinned Gitleaks integration: detected, advisory, redacted, exit 0')
+        cases = {
+            'dtype-comparisons': ('tensor.py', 'assert key.dtype == torch.bfloat16\n'
+                                 'if key_buffer.dtype == torch.float8_e4m3fn:\n    pass\n'),
+            'environment-reference': ('config.py', 'api_key = "${API_KEY}"\n'),
+            'documentation-placeholder': ('docs/example.md', 'api_key = "your-api-key"\n'),
+            'ordinary-key-variable': ('lookup.py', 'key = "cache-entry"\nvalue = mapping[key]\n'),
+        }
+        for name, (path, source) in cases.items():
+            case_base = git('rev-parse', 'HEAD')
+            target = repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source, encoding='utf-8')
+            git('add', '.')
+            git('commit', '-qm', name)
+            summary, code = run_gate(argparse.Namespace(
+                repo=repo, repository='test/fixture', base=case_base, head=git('rev-parse', 'HEAD'),
+                policy_root=policy_root, summary=Path(temporary) / (name + '.md'),
+                checks='gitleaks', native_only=False))
+            text = summary.read_text(encoding='utf-8')
+            assert code == 0, name + ': ' + text.replace(marker, '[REDACTED]')
+            assert marker not in text
+            if name != 'dtype-comparisons':
+                assert '疑似包含密钥' not in text, name + ': unexpected advisory'
+            print('{}: exit 0; secret advisory={}'.format(name, '疑似包含密钥' in text))
+        # A credential introduced then removed within this PR must still warn.
+        summary, code = run_gate(argparse.Namespace(
+            repo=repo, repository='test/fixture', base=base, head=git('rev-parse', 'HEAD'),
+            policy_root=policy_root, summary=Path(temporary) / 'history.md',
+            checks='gitleaks', native_only=False))
+        text = summary.read_text(encoding='utf-8')
+        assert code == 0 and '疑似包含密钥' in text and marker not in text
+        print('Removed synthetic credential in PR history: advisory retained, redacted, exit 0')
 
 
 if __name__ == '__main__':

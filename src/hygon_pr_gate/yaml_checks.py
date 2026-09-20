@@ -31,8 +31,9 @@ def validate_yaml(text, workflow=False):
             keys = set()
             for key, value in node.value:
                 if isinstance(key, yaml.ScalarNode):
-                    # Compare spelling, not YAML 1.1 booleans (on/yes/true).
-                    identity = key.value
+                    # Distinguish numeric/null keys from quoted strings; preserve
+                    # spelling rather than collapsing YAML 1.1 on/yes/true.
+                    identity = (key.tag, key.value)
                     if identity in keys:
                         raise yaml.constructor.ConstructorError(None, None, 'duplicate mapping key', key.start_mark)
                     keys.add(identity)

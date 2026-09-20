@@ -17,6 +17,16 @@
 
 ## Acceptance
 
+## Follow-up edge validation
+
+Add synthetic tests for YAML stream delimiters, block strings, typed scalar keys,
+tags, aliases and malformed later documents. Keep duplicate-key blocking but use
+the scalar tag together with its spelling: integer `1` is not string `"1"`.
+Do not construct application objects or relax the entire duplicate-key rule.
+Replay dtype-comparison secret false positives using the pinned scanner, alongside
+placeholder and synthetic credential controls; advisory matches must remain visible
+without blocking. Validate both native and container paths before rollout.
+
 - Kubernetes Deployment + Service documents parse; malformed later documents still block.
 - Unknown YAML tags are never executed; Actions cannot exploit generic YAML handling.
 - Existing identical syntax debt is advisory, newly broken files still block.
