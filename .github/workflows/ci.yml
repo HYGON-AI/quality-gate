@@ -36,6 +36,7 @@ jobs:
       - name: Unit regressions
         env:
           PYTHONPATH: src
+          CORE_GOVERNANCE_SUMMARIES: '1'
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Runner bootstrap integration
