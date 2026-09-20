@@ -35,7 +35,7 @@ def main():
             policy_root=ROOT / 'policies', summary=Path(temporary) / 'summary.md',
             checks='gitleaks', native_only=False))
         text = summary.read_text(encoding='utf-8')
-        assert code == 0, 'Secret-only findings must not block'
+        assert code == 0, 'Secret-only findings must not block: ' + text.replace(marker, '[REDACTED]')
         assert '疑似包含密钥' in text, 'Real scanner must detect synthetic fixture'
         assert marker not in text, 'Secret value must never appear in summary'
         assert 'Blockers / 阻断问题：0' in text
