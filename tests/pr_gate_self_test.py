@@ -111,7 +111,7 @@ def assert_clean_pr_passes(root: Path) -> None:
     summary, code = run_gate(arguments(repo, base, head, root / "clean.md"))
     assert code == 0, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
-    assert "# Quality Gate · PR 增量门禁" in content
+    assert content.startswith('# All Checks')
     assert "Check / 检查项：`All Checks`（全部检查）" in content
     assert "内置预检通过，完整门禁未执行" in content
     assert "Blockers / 阻断问题：0" in content
