@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .models import finding
+from .secret_placeholders import deterministic_placeholder_reason
 
 
 def _load_json(path: Path) -> Any:
@@ -25,6 +26,68 @@ def _relative(path: str) -> str:
     while value.startswith("./"):
         value = value[2:]
     return value.lstrip("/")
+
+
+def parse_gitleaks(
+    path: Path,
+    *,
+    source_repo: Optional[Path] = None,
+    target_commit: str = "",
+    placeholder_config: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    document = _load_json(path)
+    if not isinstance(document, list):
+        raise ValueError("gitleaks report root must be a list")
+    findings = []
+    summary = {
+        "raw_findings": 0,
+        "ignored_placeholders": 0,
+        "ignored_safe_markers": 0,
+        "reported_findings": 0,
+    }
+    for item in document:
+        if not isinstance(item, dict):
+            continue
+        summary["raw_findings"] += 1
+        if source_repo is not None:
+            ignored_reason = deterministic_placeholder_reason(
+                item,
+                source_repo=source_repo,
+                target_commit=target_commit,
+                config=placeholder_config or {},
+            )
+            if ignored_reason:
+                if ignored_reason == "safe-marker":
+                    summary["ignored_safe_markers"] += 1
+                else:
+                    summary["ignored_placeholders"] += 1
+                continue
+        rule = str(item.get("RuleID") or item.get("Description") or "unknown")
+        file_path = _relative(str(item.get("File") or "Git history"))
+        commit = str(item.get("Commit") or "") or None
+        line = item.get("StartLine")
+        fingerprint = str(item.get("Fingerprint") or "") or None
+        evidence = "规则 {} 命中；密钥内容已脱敏".format(rule)
+        if commit:
+            evidence += "；Commit {}".format(commit[:12])
+        findings.append(
+            finding(
+                "SECRET.GITLEAKS.{}".format(rule.upper().replace("_", "-")),
+                "gitleaks",
+                file_path,
+                "Git 当前树或历史中疑似包含密钥",
+                evidence,
+                "立即吊销并轮换凭据，清理待发布 Git 历史；不得只删除当前文件。",
+                level="advisory",
+                line=int(line) if isinstance(line, int) else None,
+                commit=commit,
+                fingerprint=fingerprint,
+                confidence="high",
+                reachability="not-applicable",
+            )
+        )
+    summary["reported_findings"] = len(findings)
+    return findings, summary
 
 
 def parse_semgrep(

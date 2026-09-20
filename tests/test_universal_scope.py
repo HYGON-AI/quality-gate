@@ -25,16 +25,18 @@ class UniversalScopeTests(unittest.TestCase):
 
     def test_output_is_independent_of_directory_and_markers(self):
         for path in ('demo.py', 'src/demo.py', 'tests/demo.py', 'docs/demo.py'):
-            for value in ('amd', 'amdsmi', 'abcdamd', 'XGMIlink'):
+            for value in ('amd', 'XGMI'):
                 with self.subTest(path=path, value=value):
                     findings, _ = self.scan(path, ('print(%r)\n' % value).encode())
-                    self.assertTrue(any(f['level'] == 'blocker' for f in findings))
+                    self.assertTrue(findings)
+                    self.assertTrue(all(f['level'] == 'advisory' for f in findings))
 
     def test_text_suffix_and_internal_docs_do_not_exempt_dcu(self):
         for path in ('settings.cfg', 'script', 'docs/internal/note.md'):
             with self.subTest(path=path):
                 findings, _ = self.scan(path, b'label=dcu\n')
-                self.assertTrue(any(f['level'] == 'blocker' for f in findings))
+                self.assertTrue(findings)
+                self.assertTrue(all(f['level'] == 'advisory' for f in findings))
 
     def test_unreadable_content_is_invalid(self):
         for content in (None, b'abc\x00def', b'\xfftext'):

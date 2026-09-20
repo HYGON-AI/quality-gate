@@ -1,5 +1,13 @@
 # HYGON Quality Gate
 
+## Unreleased low-noise changes
+
+- Restore pinned, offline Gitleaks scanning as **advisory only**, with redacted reports. Missing reports and scanner failures remain invalid scans. Preinstall the Gitleaks image listed in the central policy.
+- Validate all documents in ordinary YAML streams, accepting custom tags without executing constructors. Duplicate keys and malformed documents still block; Actions must remain a single mapping document. Recognized Helm templates require rendered validation (advisory), not a claimed syntax pass.
+- Sensitive wording is advisory: token matches cannot establish ownership, compatibility intent or legal obligations. Do not mechanically rename upstream copyright, vendor backends or API/ABI contracts.
+- Existing syntax debt is advisory only for conservative comment-only changes. This is not a general semantic baseline comparison.
+- Deduplicate PR annotations; retain full findings in the summary. The existing v2.0.3 tag is unchanged.
+
 HYGON Quality Gate is a reusable GitHub Actions workflow for incremental pull
 request quality, security, and open-source compliance checks. It evaluates only
 the commits, files, and changed lines introduced by a pull request.
@@ -38,13 +46,13 @@ Checks / All required checks
 
 ## Checks
 
-Secret scanning has been removed. The gate no longer requires Gitleaks or its image.
+Secret scanning is advisory and requires the pinned Gitleaks image. Findings are redacted; scanner failures remain explicit.
 
 | Job | Checks |
 | --- | --- |
 | Identity, license & wording | <ol><li>Commit author, committer, email, and message fields</li><li>LICENSE/NOTICE/COPYING files, original copyright notices, and SPDX identifiers</li><li><code>THIRD_PARTY_NOTICES.md</code> changes</li><li>Organization and platform wording in newly added content</li></ol> |
 | Repository & code quality | <ol><li>Unsafe symbolic links, abnormal paths, Git blobs, and large files</li><li>UTF-8 encoding, control characters, and line endings</li><li>Python/YAML syntax and Workflow references</li><li>Ruff Python linting</li><li>ShellCheck shell linting</li><li>actionlint GitHub Actions linting</li><li>yamllint YAML linting</li><li>Lizard code-complexity analysis</li></ol> |
-| Code Security | <ol><li>Semgrep static application security testing, currently advisory</li></ol> |
+| Secrets & SAST | <ol><li>Gitleaks secret scanning, advisory and redacted</li><li>Semgrep static application security testing, currently advisory</li></ol> |
 | All required checks | <ol><li>Aggregation of the preceding results</li><li>A single branch-protection check and Job Summary</li></ol> |
 
 Action and reusable workflow references in the target repository that are not
@@ -67,7 +75,7 @@ Any public or private repository can call the same reviewed version without a
 repository-specific profile. The PR gate blocks only high-confidence
 incremental problems, including forbidden identity fields,
 definite syntax errors, legal-file or original-header damage, unsupported SPDX
-additions, and confirmed sensitive runtime wording.
+additions. Sensitive wording requires manual review and is advisory.
 
 Whole-repository open-source compliance audit skills, quality and security
 audit skills, history-rewrite skills, remediation reports, target repository

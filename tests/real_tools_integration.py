@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HEADER = '# Copyright (c) 2026 Hygon Information Technology Co., Ltd.\n# SPDX-License-Identifier: Apache-2.0\n'
 CASES = {
     'clean': ({'demo.py': HEADER + 'print(len("amd"))\nassert True, len("amd")\n'}, 0, '本检查通过'),
-    'wording': ({'demo.py': HEADER + 'print("{}".format("amd"))\nprint("\\namd")\n'}, 2, 'AMD/XGMI'),
+    'wording': ({'demo.py': HEADER + 'print("{}".format("amd"))\nprint("\\namd")\n'}, 0, 'AMD/XGMI'),
     'semgrep': ({'demo.py': HEADER + 'import subprocess\nsubprocess.run("echo hello", shell=True)\n'}, 0, '静态分析发现潜在安全问题'),
     'ruff': ({'demo.py': HEADER + 'value = 0\ndef f():\n    print(value)\n    value = 1\n'}, 2, 'F823'),
     'shellcheck': ({'run.sh': '#!/bin/sh\n' + HEADER + 'echo "$undefined_variable"\n'}, 0, 'Shell 脚本存在风险问题'),

@@ -2,10 +2,11 @@
 
 ## 通用增量检查范围
 
-当前门禁不再提供密钥泄露检测，无需安装或预装 Gitleaks 镜像。其余六个外部工具继续使用。
+当前开发分支恢复 Gitleaks 密钥检测，但命中仅提示、不阻断，报告不包含密钥原文。需要预装策略固定摘要的 Gitleaks 镜像；扫描器失败或报告缺失仍标记扫描无效，不能伪装为检测通过。已有 `v2.0.3` 标签不受本次开发分支调整影响。
 
-- 新增文件检查全部文本，已有文件检查新增行。AMD/XGMI 可见输出按大小写不敏感的子串匹配，不要求 HCU 路径或标记，不排除测试和文档目录。
-- DCU 内容检查不再按文件后缀筛选，也不因 `docs/internal/` 路径降级；移除了旧策略中项目专用的标识符豁免。
+- 新增文件检查全部文本，已有文件检查新增行。AMD/XGMI 可见输出使用词法匹配，不再使用任意子串匹配；DCU、AMD/XGMI 命中均仅提示，需要人工核实归属及语义。不得机械修改上游版权、真实后端或 API/ABI 名称。
+- 普通 YAML 支持多文档及自定义标签的语法检查，不执行标签构造器；重复键及明确语法错误仍阻断。Actions Workflow 必须为单文档映射。已识别的 Helm 模板源文件仅提示需渲染验证，不宣称已验证其有效性。
+- 对仅改注释且其余内容完全不变的文件，已有语法问题降为提示；这不是完整基线语义差分，复杂历史问题仍需逐案核对。
 - PNG/JPEG/GIF 图片载荷及 Notebook 的 `image/*` 值不参与敏感字段检查，路径仍检查。ELF（包括 `.so`、`.o` 和可执行文件）、LLVM bitcode、静态库归档、Mach-O 按内容识别并跳过源码文本和敏感输出检查，在现有检查说明中列出文件及跳过原因；文件路径、大小、链接仍检查。其他不可解析二进制、读取失败、文本超过读取上限和解析失败会列出具体原因并返回扫描无效。
 - Semgrep 报告解析失败或必需工具未生成报告时，不能按通过处理。
 - Python 输出检查支持直接和转义字符串、简单变量赋值、字符串加法、简单 `.format()` 和 f-string 固定文字。仅赋值或字典字段不视为输出；`print(len("amd"))` 不因内部字符串误报。仍不能追踪任意变量、跨函数返回值或所有动态拼接，通过不代表已验证全部运行时输出。
@@ -52,7 +53,7 @@ Checks / All required checks
 | --- | --- |
 | Identity, license & wording | <ol><li>Commit 作者、提交者、邮箱及提交信息</li><li>LICENSE/NOTICE/COPYING、原版权声明和 SPDX 标识</li><li><code>THIRD_PARTY_NOTICES.md</code> 变更</li><li>新增内容中的组织与平台表述</li></ol> |
 | Repository & code quality | <ol><li>危险符号链接、异常路径、Git Blob 和大文件</li><li>UTF-8 编码、控制字符和换行格式</li><li>Python/YAML 语法及 Workflow 引用</li><li>Ruff Python Lint</li><li>ShellCheck Shell Lint</li><li>actionlint GitHub Actions Lint</li><li>yamllint YAML Lint</li><li>Lizard 代码复杂度分析</li></ol> |
-| Code Security | <ol><li>Semgrep 静态应用安全测试，当前作为提示项</li></ol> |
+| Secrets & SAST | <ol><li>Gitleaks 密钥检测，仅提示且脱敏</li><li>Semgrep 静态应用安全测试，当前作为提示项</li></ol> |
 | All required checks | <ol><li>汇总前述检查结果</li><li>生成统一的分支保护检查项和 Job Summary</li></ol> |
 
 目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被报告为
@@ -72,7 +73,7 @@ Checks / All required checks
 
 任意公开或私有仓库均可调用同一已审核版本，无需逐仓登记 Profile。PR 门禁只阻断
 高置信度的增量问题，例如不合规身份字段、确定的语法错误、许可证文件或
-原版权声明破坏、不受支持的 SPDX 新增，以及确认存在问题的敏感运行时表述。
+原版权声明破坏、不受支持的 SPDX 新增。敏感表述仅提供人工核对提示，不以词法命中推断归属。
 
 本仓库不包含全仓开源合规审计 Skill、全仓质量安全审计 Skill、历史重写 Skill、
 整改报告、目标仓库源码、凭据、缓存或 Runner 运行数据。
@@ -127,13 +128,13 @@ PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 python3 -m compileall -q src tests
 ```
 
-真实工具集成验证需要 Docker 权限，并提前准备策略中固定的三个镜像；验证会创建临时 Git 仓库，不运行目标代码、不联网拉取镜像。报告目录应放在仓库外：
+真实工具集成验证需要 Docker 权限，并提前准备策略中固定的四个镜像；验证会创建临时 Git 仓库，不运行目标代码、不联网拉取镜像。报告目录应放在仓库外：
 
 ```bash
 PYTHONPATH=src .venv/bin/python tests/real_tools_integration.py --output /tmp/quality-gate-integration
 ```
 
-覆盖六个真实工具、正常通过、敏感输出阻断、已有告警与新增告警的区分，以及解析失败时保留已有发现。Semgrep 安全规则、ShellCheck 警告和复杂度在当前策略中作为提示，不能将“工具已执行”理解成“所有告警都阻断”。
+覆盖七个真实工具、正常通过、敏感输出提示、已有告警与新增告警的区分，以及解析失败时保留已有发现。密钥命中、Semgrep 安全规则、ShellCheck 警告和复杂度作为提示，不能将“工具已执行”理解成“所有告警都阻断”。PR 页面同文件同规则提示聚合且最多展示十条提示，完整结果保留在 Summary。
 
 Action 依赖准备集成测试（使用已有 Python；验证离线复用、版本检查、缺少 PyYAML 时隔离安装及失败提示）：
 

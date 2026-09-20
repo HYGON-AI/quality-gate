@@ -8,6 +8,45 @@ version: "1.1.0"
 # Whole-repository inventory, origin classification, and audit-report policy
 # remain in the private audit system.
 scanners:
+  gitleaks:
+    enabled: true
+    finding_level: advisory
+    placeholder_filter:
+      enabled: true
+      # Gitleaks generic-api-key treats any high-entropy "*_key" assignment
+      # as credential-like. These exact names are domain identifiers, not
+      # authentication material, and are ignored only for the listed rule.
+      non_secret_assignment_rule_ids:
+        - generic-api-key
+      non_secret_assignment_names:
+        - model_key
+      documentation_extensions:
+        - .md
+        - .mdx
+        - .rst
+        - .adoc
+      example_path_segments:
+        - doc
+        - docs
+        - example
+        - examples
+        - sample
+        - samples
+        - fixture
+        - fixtures
+        - test
+        - tests
+      literal_patterns:
+        - '(?i)^(?:your|example|sample|dummy|fake|test|demo|placeholder|replace[-_]?me|changeme)[-_.]?(?:api[-_]?key|access[-_]?token|auth[-_]?token|token|key|secret|password)?$'
+        - '(?i)^(?:admin|worker|master|router|server|client|global|sglang|access|public)[-_](?:api[-_]?key|access[-_]?token|token|key|secret|password)$'
+        - '(?i)^(?:api[-_]?key|access[-_]?token|auth[-_]?token|token|secret|password)[-_](?:example|sample|dummy|fake|test|demo|placeholder)$'
+        - '(?i)^(?:sk|pk)[-_](?:example|sample|test|dummy|placeholder)$'
+        - '(?i)^(?:secret|password|token|api[-_]?key|access[-_]?token)[-_](?:key|token|value|example|placeholder)$'
+      safe_marker_rule_ids:
+        - private-key
+        - private-key-pem
+      safe_marker_line_patterns:
+        - '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
   semgrep:
     enabled: true
     block_rule_ids: []
@@ -40,6 +79,7 @@ scanners:
     lizard: advisory
 
 images:
+  gitleaks: zricethezav/gitleaks@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4
   semgrep: docker.xuanyuan.run/semgrep/semgrep@sha256:16783c52158c4c874576f53579b42b3e793210546e2dfac4c5e49e18038ac383
   ruff: ghcr.io/astral-sh/ruff@sha256:5bf3adee1d6552bf4dc8381391f0a68827effae9d277c54d6b8c1aa564c7915a
   quality_tools: hygon-quality-tools:1.0.0

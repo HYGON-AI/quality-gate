@@ -32,3 +32,21 @@ jobs:
         env:
           PYTHONPATH: src
         run: python3 tests/pr_gate_self_test.py
+
+      - name: Unit regressions
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Runner bootstrap integration
+        run: python3 tests/runner_bootstrap_integration.py -v
+
+      - name: Preinstall pinned secret scanner for integration test
+        run: |
+          image=$(python3 -c 'import yaml; print(yaml.safe_load(open("policies/quality-security/hygon-quality-security-v1.1.yaml"))["images"]["gitleaks"])')
+          docker pull "$image"
+
+      - name: Real advisory secret scanner regression
+        env:
+          PYTHONPATH: src
+        run: python3 tests/gitleaks_integration.py

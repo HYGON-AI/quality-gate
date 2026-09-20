@@ -30,7 +30,7 @@ EXPECTED_WORKFLOW_CHECKS = {
         "Repository & code quality",
         "git-encoding,syntax-workflow,ruff,quality-tools",
     ),
-    "security-check": ("Code Security", "semgrep"),
+    "security-check": ("Secrets & SAST", "gitleaks,semgrep"),
 }
 
 
@@ -586,13 +586,13 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     clean_args.checks = "sensitive-diff"
     clean_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(clean_args)
-    assert code == 2, summary.read_text(encoding="utf-8")
+    assert code == 0, summary.read_text(encoding="utf-8")
     clean_content = summary.read_text(encoding="utf-8")
     assert "Added content contains a legacy DCU token" in clean_content
     assert (
         "Changed destination path contains a legacy DCU token" not in clean_content
     )
-    assert "本检查阻断" in clean_content
+    assert "Blockers / 阻断问题：0" in clean_content
 
     # DCU is a repository-rename rule: exact tokens in destination paths and
     # added content are blocked, while unrelated substrings remain allowed.
@@ -617,7 +617,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     blocked_args.checks = "sensitive-diff"
     blocked_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(blocked_args)
-    assert code == 2, summary.read_text(encoding="utf-8")
+    assert code == 0, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
     assert "Changed destination path contains a legacy DCU token" in content
     assert "Added content contains a legacy DCU token" in content
@@ -728,9 +728,9 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     runtime_args.checks = "sensitive-diff"
     runtime_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(runtime_args)
-    assert code == 2, summary.read_text(encoding="utf-8")
+    assert code == 0, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
-    assert "HCU user-visible output contains AMD/XGMI wording" in content
+    assert "Visible output contains AMD/XGMI wording" in content
     assert "info()" in content
     assert "error()" in content
     assert "fallback path" in content
@@ -826,7 +826,7 @@ def assert_sensitive_diff_scope(root: Path) -> None:
     allowed_args.checks = "sensitive-diff"
     allowed_args.display_name = "Sensitive Diff Text"
     summary, code = run_gate(allowed_args)
-    assert code == 2, summary.read_text(encoding="utf-8")
+    assert code == 0, summary.read_text(encoding="utf-8")
 
 
 def assert_shared_workflow_contract() -> None:
