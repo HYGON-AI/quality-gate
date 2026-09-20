@@ -12,6 +12,7 @@ from hygon_pr_gate.native_checks import scan_identity, scan_compliance
 from hygon_pr_gate.policy import load_policy
 from hygon_pr_gate.render_summary import render_summary
 from hygon_pr_gate.sensitive_diff_check import scan_sensitive_diff
+from hygon_pr_gate.sensitive_diff_check import _term_matches
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = '# Copyright (c) 2026 Hygon Information Technology Co., Ltd.\n'
@@ -143,6 +144,14 @@ class CoreGovernanceTests(unittest.TestCase):
         self.write('src/hcu/runtime.py', 'print("abcdamd")\n')
         self.check(scan_sensitive_diff, [])
 
+    def test_wording_case_fix_keeps_word_boundaries(self):
+        for word in ('AmD', 'aMd', 'amd', 'AMD', 'XgMi', 'xGmI'):
+            with self.subTest(word=word):
+                self.assertEqual(len(_term_matches(word, ['amd', 'xgmi'])), 1)
+        for word in ('amd64', 'abcdamd', 'xgmi2', 'examplexgmi', 'AmD64'):
+            with self.subTest(word=word):
+                self.assertEqual(_term_matches(word, ['amd', 'xgmi']), [])
+
     def test_wording_unchanged_legacy_not_reported(self):
         self.write('src/hcu/runtime.py', 'print("AMD GPU with XGMI")\nVALUE = 1\n')
         self.base = self.commit()
@@ -170,6 +179,35 @@ for field, title in [('author_email', '作者邮箱'), ('committer_email', '提�
         value = 'fixture@' + word + '.invalid' if field.endswith('email') else 'test: synthetic ' + word
         setattr(CoreGovernanceTests, 'test_' + field + '_blocks_' + label,
                 metadata_case(field, value, True, title))
+
+
+def license_template_case(license_id, category, upstream_header):
+    def test(self):
+        spdx = '# SPDX-License-Identifier: ' + license_id + '\n'
+        modified = '# Modified by Hygon Information Technology Co., Ltd., 2026.\n'
+        if category == 'H1':
+            self.write('new.py', HEADER + spdx + 'VALUE = 1\n')
+        else:
+            original = UPSTREAM + spdx if upstream_header else ''
+            self.write('base.py', original + 'VALUE = 1\n')
+            self.base = self.commit()
+            addition = ''
+            if license_id == 'Apache-2.0':
+                addition = HEADER + ('' if upstream_header else spdx) + modified if category == 'H2' else modified
+            self.write('base.py', original + addition + 'VALUE = 2\n')
+            if license_id != 'Apache-2.0' and category == 'H2':
+                self.write('NOTICE', 'HYGON original contributions recorded for synthetic test.\n')
+        self.check(scan_compliance, [])
+    return test
+
+
+for license_id in ('Apache-2.0', 'MIT', 'BSD-3-Clause'):
+    for category in ('H1', 'H2', 'H3'):
+        setattr(CoreGovernanceTests, 'test_template_' + license_id.replace('-', '_').replace('.', '_') + '_' + category,
+                license_template_case(license_id, category, True))
+for category in ('H2', 'H3'):
+    setattr(CoreGovernanceTests, 'test_template_Apache_no_upstream_header_' + category,
+            license_template_case('Apache-2.0', category, False))
 
 
 if __name__ == '__main__':

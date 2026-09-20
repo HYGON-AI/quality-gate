@@ -13,3 +13,9 @@
 5. Publish synthetic rendered case summaries to CI step summary for inspection, and use the disposable consumer PR for an additional compliance/wording check. Do not merge PRs or move stable.
 
 Acceptance: exact finding sets, positive and negative cases, full CI evidence. Report skips and any uncovered areas explicitly.
+
+## Approved follow-up design
+
+User approved fixing mixed-case standalone AMD/XGMI missed by camel-token splitting. Recover an entire alphanumeric word only when it equals a configured term case-insensitively; do not add substring matching or change advisory severity. Test word boundaries explicitly.
+
+Add the user's Apache-2.0/MIT/BSD-3-Clause H1/H2/H3 templates as allowed cases, plus Apache missing-upstream-header cases. These verify non-rejection, not automatic classification of originality or substantive contribution. The current scanner does not enforce H2/H3 contribution registration completeness.
