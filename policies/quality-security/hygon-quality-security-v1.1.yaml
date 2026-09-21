@@ -49,6 +49,7 @@ scanners:
         - '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
   semgrep:
     enabled: true
+    cpp_simple_var_compatibility_advisory: true
     block_rule_ids: []
     advisory_rule_ids:
       - hygon.python.tempfile-mktemp

@@ -29,12 +29,14 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
     findings = data.get("findings", [])
     blockers = [item for item in findings if item.get("level") == "blocker"]
     advisories = [item for item in findings if item.get("level") != "blocker"]
+    coverage_partial = any(item.get('state') == 'partial' for item in data.get('statuses', []))
     status_icon = {
         "passed": "Passed / 通过",
         "findings": "Findings / 有发现",
         "failed": "Failed / 执行失败",
         "disabled": "Skipped / 未执行",
         "not-applicable": "无需检查",
+        "partial": "Partial / 覆盖不完整（兼容性提示）",
     }
     display_name = _escape(data.get("display_name") or "Unknown Check")
     display_name_zh = _escape(data.get("display_name_zh") or "未知检查")
@@ -46,6 +48,7 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
             else "⚠️ Invalid Scan / 扫描无效" if data.get('operational_error')
             else "❌ Blocked / 本检查阻断" if blockers
             else "内置预检通过，完整门禁未执行" if data.get('partial')
+            else "⚠️ 本检查无阻断项；扫描覆盖不完整（已知兼容性提示）" if coverage_partial
             else "✅ Passed / 本检查通过"),
         "",
         "- Blockers / 阻断问题：{}".format(len(blockers)),
@@ -80,6 +83,8 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
             )
         )
     lines.extend(['', '</details>'])
+    if coverage_partial:
+        lines.extend(['', '⚠️ 已知解析兼容性限制：部分内容未获安全验证；其他检查和发现仍有效。'])
     if blockers:
         lines.extend(["", "## Required Changes / 必须修改", ""])
         locations = {}
@@ -99,6 +104,8 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
                     lines.append('- 修复：{}'.format(_escape(remedy)))
             lines.append("")
     if advisories:
+        if data.get('operational_error'):
+            lines.extend(['', '注意：以下提示不是失败原因；本次检查因扫描执行异常失败，原因见“扫描无效”。'])
         lines.extend(["", "## Advisories / 提示项（不阻断）", ""])
         lines.extend(['<details><summary>展开提示详情（不阻断合并）</summary>', ''])
         for item in advisories:

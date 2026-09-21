@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  QUALITY_GATE_VERSION: v2.0.5
+  QUALITY_GATE_VERSION: v2.0.6
 
 jobs:
   incremental_check:

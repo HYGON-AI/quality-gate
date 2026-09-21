@@ -5,7 +5,10 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 
 [English documentation](README.en.md)
 
-本文描述 `v2.0.5`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+本文描述 `v2.0.6`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+
+v2.0.6 精确降级已复现的 Semgrep C++ `single name expected for simple var` 兼容性告警，
+明确显示“扫描覆盖不完整”，不跳过文件、不删除其他安全发现。未知解析异常、工具故障和缺失报告仍阻断。
 
 ## 快速接入
 
@@ -14,13 +17,13 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 2. 根据目标仓库实际情况调整 `pull_request.branches`。
 3. 将 `QUALITY_GATE_REF` 替换为已审核的发布 Tag 或完整 Commit SHA。
 
-以下示例使用固定版本 [`v2.0.5`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.5)：
+以下示例使用固定版本 [`v2.0.6`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.6)：
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.5
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.6
     permissions:
       contents: read
 ```

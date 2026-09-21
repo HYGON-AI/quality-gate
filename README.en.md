@@ -6,7 +6,11 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.5`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.6`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.6 narrowly downgrades the reproduced Semgrep C++ `single name expected for simple var`
+compatibility warning to explicit incomplete coverage. Files and other findings are not skipped.
+Unknown parsing errors, tool failures, and missing reports still fail the gate.
 
 ## Quick start
 
@@ -16,13 +20,13 @@ This document describes `v2.0.5`. Release tags remain fixed; `stable` is the rol
 3. Replace `QUALITY_GATE_REF` with a reviewed release tag or full Commit SHA.
 
 The following example uses the current stable release
-[`v2.0.5`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.5):
+[`v2.0.6`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.6):
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.5
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.6
     permissions:
       contents: read
 ```
