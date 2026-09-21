@@ -162,7 +162,10 @@ class LocalDockerExecutor:
         findings, coverage = parse_semgrep(
             report, self.quality["scanners"]["semgrep"]
         )
-        findings = _filter_changed_lines(findings, scope["changed_lines"])
+        compatibility = [item for item in findings
+                         if item['rule_id'] == 'SAST.SEMGREP.CPP_PARSER_COMPATIBILITY']
+        findings = compatibility + _filter_changed_lines(
+            [item for item in findings if item not in compatibility], scope['changed_lines'])
         advisory_rules = {
             str(value).upper()
             for value in self.policy.get("advisory", {}).get("semgrep_rule_ids", [])
@@ -175,6 +178,12 @@ class LocalDockerExecutor:
             return findings, scanner_status(
                 "semgrep", "failed", finding_count=len(findings),
                 detail="Semgrep 未完成扫描：" + "; ".join(coverage[:3]),
+            )
+        if compatibility:
+            return findings, scanner_status(
+                'semgrep', 'partial', finding_count=len(findings),
+                detail='扫描覆盖不完整：{} 项已确认的 C++ 解析兼容性提示；未跳过文件，其他发现仍保留。'.format(len(compatibility)),
+                image=str(self.images['semgrep']),
             )
         return findings, self._status(
             "semgrep", findings, str(self.images["semgrep"]),

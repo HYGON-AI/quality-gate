@@ -61,7 +61,7 @@ def scanner_status(
     image: str = "",
     finding_count: int = 0,
 ) -> Dict[str, Any]:
-    if state not in {"passed", "findings", "disabled", "failed", "not-applicable"}:
+    if state not in {"passed", "findings", "disabled", "failed", "not-applicable", "partial"}:
         raise ValueError("invalid scanner state: {}".format(state))
     return {
         "scanner": scanner,

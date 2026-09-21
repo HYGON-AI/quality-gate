@@ -90,11 +90,27 @@ def parse_gitleaks(
     return findings, summary
 
 
+def _known_cpp_simple_var_warning(error: Dict[str, Any]) -> Optional[int]:
+    """Match only the production-reproduced C++ warning, never generic parse errors."""
+    path = error.get('path')
+    if (not isinstance(path, str) or Path(path).suffix.lower() not in
+            {'.cpp', '.cc', '.cxx', '.hpp', '.hh', '.hxx'} or
+            type(error.get('code')) is not int or error['code'] != 2 or
+            error.get('level') != 'warn' or error.get('type') != 'Other syntax error'):
+        return None
+    match = re.fullmatch(
+        r'Other syntax error at line ' + re.escape(path) +
+        r':([1-9][0-9]*):\s+single name expected for simple var\s*',
+        str(error.get('message') or ''),
+    )
+    return int(match.group(1)) if match else None
+
+
 def parse_semgrep(
     path: Path, policy: Optional[Dict[str, Any]] = None
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
     document = _load_json(path)
-    if not isinstance(document, dict) or not isinstance(document.get("results", []), list):
+    if not isinstance(document, dict) or not isinstance(document.get("results"), list):
         raise ValueError("semgrep report has no results list")
     policy = policy or {}
     block_rule_ids = {
@@ -112,11 +128,24 @@ def parse_semgrep(
     }
     findings = []
     coverage_errors = []
-    for error in document.get("errors") or []:
+    errors = document.get('errors', [])
+    if not isinstance(errors, list):
+        raise ValueError('semgrep errors must be a list')
+    for error in errors:
         if not isinstance(error, dict):
-            continue
+            raise ValueError('semgrep error must be an object')
         message = str(error.get("message") or error.get("type") or "Semgrep error")
         path_value = _relative(str(error.get("path") or ""))
+        known_line = (_known_cpp_simple_var_warning(error)
+                      if policy.get('cpp_simple_var_compatibility_advisory') is True else None)
+        if known_line is not None:
+            findings.append(finding(
+                'SAST.SEMGREP.CPP_PARSER_COMPATIBILITY', 'semgrep', path_value,
+                'Semgrep C++ 解析兼容性提示：扫描覆盖不完整', message,
+                '此提示不阻断；未解析部分未获安全验证，须保留项目编译和测试。其他安全发现仍有效。',
+                level='advisory', line=known_line,
+            ))
+            continue
         if path_value:
             coverage_errors.append("{}: {}".format(path_value, message))
             findings.append(
