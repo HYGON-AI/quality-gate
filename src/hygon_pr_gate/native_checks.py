@@ -273,18 +273,6 @@ def scan_git_and_encoding(
                 )
             )
             continue
-        if "\r\n" in text:
-            findings.append(
-                finding(
-                    "ENCODING.CRLF",
-                    "native-git",
-                    path,
-                    "PR 文本文件使用 CRLF 换行",
-                    "检测到 CRLF；第一版不阻断",
-                    "非 Windows 专用文件建议统一为 LF。",
-                    level="advisory",
-                )
-            )
         for line_number, line in enumerate(text.splitlines(), 1):
             if "\ufffd" not in line:
                 continue

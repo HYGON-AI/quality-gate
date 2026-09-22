@@ -69,7 +69,9 @@ class SemgrepCppCoverageTests(unittest.TestCase):
             reports = Path(directory)
             (reports / 'semgrep.json').write_text(json.dumps({'results': results or [], 'errors': errors}), encoding='utf-8')
             with patch.object(executor, '_docker', side_effect=docker_error):
-                return executor._semgrep(reports, {'changed_lines': {'src/gda/topology.cpp': {1}}}, reports, ['src/gda/topology.cpp'])
+                # Exercise the legacy report parser using a mocked scan with an
+                # applicable Python target. Actual C++ targets are excluded in v2.0.7.
+                return executor._semgrep(reports, {'changed_lines': {'src/gda/topology.cpp': {1}}}, reports, ['demo.py'])
 
     def test_coverage_warning_survives_changed_line_filter(self):
         findings, status = self.execute([self.known()])

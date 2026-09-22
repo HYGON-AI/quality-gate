@@ -77,7 +77,7 @@ scanners:
     shellcheck: true
     actionlint: true
     yamllint: true
-    lizard: advisory
+    lizard: false
 
 images:
   gitleaks: zricethezav/gitleaks@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4

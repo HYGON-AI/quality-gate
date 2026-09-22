@@ -6,11 +6,12 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.6`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.7`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
 
-v2.0.6 narrowly downgrades the reproduced Semgrep C++ `single name expected for simple var`
-compatibility warning to explicit incomplete coverage. Files and other findings are not skipped.
-Unknown parsing errors, tool failures, and missing reports still fail the gate.
+v2.0.7 renames the three check groups while preserving the aggregate check and internal job IDs.
+PR scans remove Lizard, YAML formatting, ShellCheck style diagnostics and CRLF advisories.
+Semgrep scans only Python/JS/TS; C/C++ is explicitly out of scope. Unknown parsing errors,
+tool failures and missing reports from retained scanners still fail the gate.
 
 ## Quick start
 
@@ -20,13 +21,13 @@ Unknown parsing errors, tool failures, and missing reports still fail the gate.
 3. Replace `QUALITY_GATE_REF` with a reviewed release tag or full Commit SHA.
 
 The following example uses the current stable release
-[`v2.0.6`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.6):
+[`v2.0.7`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.7):
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.6
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.7
     permissions:
       contents: read
 ```
@@ -52,9 +53,9 @@ Gitleaks findings are advisory and redacted; they do not block merging.
 
 | Job | Checks |
 | --- | --- |
-| Identity, license & wording | <ol><li>Commit author, committer, email, and message fields</li><li>LICENSE/NOTICE/COPYING files, original copyright notices, and SPDX identifiers</li><li><code>THIRD_PARTY_NOTICES.md</code> changes</li><li>Organization and platform wording in newly added content</li></ol> |
-| Repository & code quality | <ol><li>Unsafe symbolic links, abnormal paths, Git blobs, and large files</li><li>UTF-8 encoding, control characters, and line endings</li><li>Python/YAML syntax and Workflow references</li><li>Ruff Python linting</li><li>ShellCheck shell linting</li><li>actionlint GitHub Actions linting</li><li>yamllint YAML linting</li><li>Lizard code-complexity analysis</li></ol> |
-| Secrets & SAST | <ol><li>Gitleaks secret detection, redacted and advisory only</li><li>Semgrep static application security testing, currently advisory</li></ol> |
+| Code compliance | <ol><li>Commit author, committer, email, and message fields</li><li>LICENSE/NOTICE/COPYING files, original copyright notices, and SPDX identifiers</li><li><code>THIRD_PARTY_NOTICES.md</code> changes</li><li>Organization and platform wording in newly added content</li></ol> |
+| Code quality | <ol><li>Unsafe symbolic links, abnormal paths, Git blobs, and large files</li><li>UTF-8 and abnormal characters</li><li>Python/YAML syntax and Workflow references</li><li>Ruff high-confidence rules</li><li>ShellCheck non-style diagnostics</li><li>actionlint Workflow validity</li><li>yamllint syntax and duplicate keys</li></ol> |
+| Code security | <ol><li>Gitleaks secret detection, redacted and advisory only</li><li>Semgrep Python/JS/TS findings remain advisory; C/C++ is not scanned</li></ol> |
 | All required checks | <ol><li>Aggregation of the preceding results</li><li>A single branch-protection check and Job Summary</li></ol> |
 
 Action and reusable workflow references in the target repository that are not
