@@ -98,6 +98,10 @@ Existing syntax debt is advisory only for conservative comment-only changes, not
 complete semantic baseline comparison. Unsupported language versions still need review.
 Scanner failures or missing reports remain invalid scans.
 
+Known follow-ups, not fixed by this release: repository Ruff configuration can
+suppress diagnostics, and Git attributes can hide line diffs used by incremental
+filtering. v2.0.7 does not claim to close these false-negative paths.
+
 ### Header preservation
 
 Whitespace, line wrapping and common comment wrappers do not change a notice.

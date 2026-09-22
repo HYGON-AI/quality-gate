@@ -49,15 +49,15 @@ CHECK_DISPLAY_NAMES = {
 CHECK_GROUP_DISPLAY_NAMES = {
     ("identity", "compliance", "sensitive-diff"): (
         "Code compliance",
-        "治理与许可证合规",
+        "代码合规",
     ),
     ("git-encoding", "syntax-workflow", "ruff", "quality-tools"): (
         "Code quality",
-        "仓库完整性与代码质量",
+        "代码质量",
     ),
     ("gitleaks", "semgrep"): (
         "Code security",
-        "密钥与代码安全",
+        "代码安全",
     ),
 }
 
