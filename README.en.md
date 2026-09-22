@@ -111,7 +111,8 @@ complete license remains blocking. No source is automatically rewritten and
 H1/H2/H3/originality is not inferred. Recognition is bounded by the configured
 header line limit and is not a proof of legal applicability.
 
-The four existing job names remain stable. Summaries show the decision,
+Internal job IDs and `Checks / All required checks` remain stable. The three
+display names are updated as listed above. Summaries show the decision,
 counts, actual version and SHA first; details are folded and scanners with no
 applicable files say so. Passing the gate does not grant permission to merge.
 
