@@ -5,10 +5,11 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 
 [English documentation](README.en.md)
 
-本文描述 `v2.0.6`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+本文描述 `v2.0.7`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
 
-v2.0.6 精确降级已复现的 Semgrep C++ `single name expected for simple var` 兼容性告警，
-明确显示“扫描覆盖不完整”，不跳过文件、不删除其他安全发现。未知解析异常、工具故障和缺失报告仍阻断。
+v2.0.7 将三个检查组统一命名为代码合规、代码质量、代码安全，汇总名称不变。
+PR 门禁移除 Lizard、YAML 纯排版、ShellCheck style 和 CRLF 提醒；Semgrep 仅扫描
+Python/JS/TS，明确声明 C/C++ 不在安全扫描范围。保留扫描的未知解析异常、工具故障和缺失报告仍阻断。
 
 ## 快速接入
 
@@ -17,13 +18,13 @@ v2.0.6 精确降级已复现的 Semgrep C++ `single name expected for simple var
 2. 根据目标仓库实际情况调整 `pull_request.branches`。
 3. 将 `QUALITY_GATE_REF` 替换为已审核的发布 Tag 或完整 Commit SHA。
 
-以下示例使用固定版本 [`v2.0.6`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.6)：
+以下示例使用固定版本 [`v2.0.7`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.7)：
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.6
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.7
     permissions:
       contents: read
 ```
@@ -45,9 +46,9 @@ Checks / All required checks
 
 | Job | 检查内容 |
 | --- | --- |
-| Identity, license & wording | <ol><li>Commit 作者、提交者、邮箱及提交信息</li><li>LICENSE/NOTICE/COPYING、原版权声明和 SPDX 标识</li><li><code>THIRD_PARTY_NOTICES.md</code> 变更</li><li>新增内容中的组织与平台表述</li></ol> |
-| Repository & code quality | <ol><li>危险符号链接、异常路径、Git Blob 和大文件</li><li>UTF-8 编码、控制字符和换行格式</li><li>Python/YAML 语法及 Workflow 引用</li><li>Ruff Python Lint</li><li>ShellCheck Shell Lint</li><li>actionlint GitHub Actions Lint</li><li>yamllint YAML Lint</li><li>Lizard 代码复杂度分析</li></ol> |
-| Secrets & SAST | <ol><li>Gitleaks 密钥泄露检测，仅提示且脱敏，不因命中阻断</li><li>Semgrep 静态应用安全测试，当前作为提示项</li></ol> |
+| Code compliance | <ol><li>Commit 作者、提交者、邮箱及提交信息</li><li>LICENSE/NOTICE/COPYING、原版权声明和 SPDX 标识</li><li><code>THIRD_PARTY_NOTICES.md</code> 变更</li><li>新增内容中的组织与平台表述</li></ol> |
+| Code quality | <ol><li>危险符号链接、异常路径、Git Blob 和大文件</li><li>UTF-8 编码及异常字符</li><li>Python/YAML 语法及 Workflow 引用</li><li>Ruff 高置信度规则</li><li>ShellCheck 非 style 诊断</li><li>actionlint Workflow 有效性</li><li>yamllint 语法与重复键</li></ol> |
+| Code security | <ol><li>Gitleaks 密钥泄露检测，仅提示且脱敏，不因命中阻断</li><li>Semgrep 仅扫描 Python/JS/TS，发现仅提示；C/C++ 不扫描</li></ol> |
 | All required checks | <ol><li>汇总前述检查结果</li><li>生成统一的分支保护检查项和 Job Summary</li></ol> |
 
 目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被报告为
@@ -88,7 +89,8 @@ Checks / All required checks
 - 不要求所有上游代码添加 HYGON Copyright，不自动修改文件，不自动判断 H1/H2/H3 或原创归属。
 - 识别仍受策略文件头扫描行数限制；这不是任意许可证全文识别或法律适用性证明。
 
-摘要保留现有四个 Job 名称，默认展示结论、阻断/提示计数及实际版本和 SHA；
+四个 Job 的内部 ID 和 `Checks / All required checks` 保持不变；前三项展示名称更新为表中名称。
+摘要默认展示结论、阻断/提示计数及实际版本和 SHA；
 扫描详情折叠，无适用文件显示“无需检查”。门禁通过不代表已经满足全部仓库合并规则。
 
 本仓库不包含全仓开源合规审计 Skill、全仓质量安全审计 Skill、历史重写 Skill、

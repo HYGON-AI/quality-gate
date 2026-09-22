@@ -56,11 +56,11 @@ class UniversalScopeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             reports = Path(directory)
             (reports / 'semgrep.json').write_text(json.dumps({
-                'results': [], 'errors': [{'path': '/repo/example.cpp', 'message': 'bad syntax'}]}))
+                'results': [], 'errors': [{'path': '/repo/example.py', 'message': 'bad syntax'}]}))
             with patch.object(executor, '_docker'):
-                findings, status = executor._semgrep(reports, {'changed_lines': {'example.cpp': {1}}}, reports, ['example.cpp'])
+                findings, status = executor._semgrep(reports, {'changed_lines': {'example.py': {1}}}, reports, ['example.py'])
             self.assertEqual(status['state'], 'failed')
-            self.assertIn('example.cpp', status['detail'])
+            self.assertIn('example.py', status['detail'])
             self.assertTrue(findings)
 
     def test_missing_report_is_invalid(self):

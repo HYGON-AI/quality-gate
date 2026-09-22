@@ -23,11 +23,7 @@ class LocalExecutionError(RuntimeError):
     pass
 
 
-SOURCE_EXTENSIONS = {
-    ".bzl", ".c", ".cc", ".cmake", ".cpp", ".cu", ".cuh", ".cxx", ".go",
-    ".h", ".hh", ".hip", ".hpp", ".hxx", ".java", ".js", ".jsx", ".kt",
-    ".m", ".metal", ".mm", ".py", ".pyi", ".rs", ".sh", ".ts", ".tsx",
-}
+SOURCE_EXTENSIONS = {".py", ".pyi", ".js", ".jsx", ".ts", ".tsx"}
 
 
 def _run(command: Sequence[str], *, allowed: Tuple[int, ...] = (0,), timeout: int = 1800) -> subprocess.CompletedProcess:
@@ -143,7 +139,7 @@ class LocalDockerExecutor:
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         targets = [path for path in paths if PurePosixPath(path).suffix.lower() in SOURCE_EXTENSIONS]
         if not targets:
-            return [], scanner_status("semgrep", "not-applicable", detail="无适用的变更源码")
+            return [], scanner_status("semgrep", "not-applicable", detail="无适用的 Python/JS/TS 变更；C/C++ 不在 PR 安全扫描范围")
         report = reports / "semgrep.json"
         rules = self.policy_root / "semgrep"
         self._docker(
@@ -187,7 +183,7 @@ class LocalDockerExecutor:
             )
         return findings, self._status(
             "semgrep", findings, str(self.images["semgrep"]),
-            "本地规则、无网络；覆盖异常 {} 个".format(len(coverage)),
+            "仅 Python/JS/TS，本地规则、无网络；C/C++ 不在 PR 安全扫描范围；覆盖异常 {} 个".format(len(coverage)),
         )
 
     def _ruff(
@@ -246,7 +242,7 @@ class LocalDockerExecutor:
                 "quality-tools", "failed", finding_count=len(findings),
                 detail="质量工具未完成扫描：" + "; ".join(errors),
             )
-        return findings, self._status("quality-tools", findings, str(self.images["quality_tools"]), "ShellCheck/actionlint/yamllint/Lizard")
+        return findings, self._status("quality-tools", findings, str(self.images["quality_tools"]), "ShellCheck/actionlint/yamllint；不检查复杂度和纯排版")
 
     def scan(
         self,

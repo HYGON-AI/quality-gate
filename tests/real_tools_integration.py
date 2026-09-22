@@ -44,7 +44,12 @@ CASES = {
     'actionlint': ({'.github/workflows/check.yml': 'name: Test\non: push\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hello\n        invalid-key: true\n'}, 2, 'invalid-key'),
     'yamllint': ({'config.yml': 'key: one\nkey: two\n'}, 2, 'duplication of key'),
     'quality-incremental': ({'config.yml': 'key: one\nkey: two\nother: one\nother: two\n'}, 2, 'duplication of key "other"'),
-    'lizard': ({'demo.py': HEADER + 'def f(value):\n' + ''.join('    if value == %d:\n        value += 1\n' % i for i in range(30)) + '    return value\n'}, 0, '复杂度'),
+    'lizard-removed': ({'demo.py': HEADER + 'def f(value):\n' + ''.join('    if value == %d:\n        value += 1\n' % i for i in range(30)) + '    return value\n'}, 0, '本检查通过'),
+    'style-removed': ({'config.yml': 'list: [one,two]  \r\nlong: ' + 'x' * 180}, 0, '本检查通过'),
+    'cpp-excluded': ({'demo.cpp': HEADER.replace('#', '//') + 'void f() { system("echo hello"); }\n'}, 0, '无适用的 Python/JS/TS 变更'),
+    'cpp-python-mixed': ({'demo.cpp': 'invalid )() c++\n', 'demo.py': HEADER + 'import subprocess\nsubprocess.run("echo hello", shell=True)\n'}, 0, '静态分析发现潜在安全问题'),
+    'js-security': ({'demo.js': HEADER.replace('#', '//') + 'child_process.exec(input);\n'}, 0, '静态分析发现潜在安全问题'),
+    'ts-security': ({'demo.ts': HEADER.replace('#', '//') + 'child_process.exec(input);\n'}, 0, '静态分析发现潜在安全问题'),
     'failure-retains-blocker': ({'a.py': HEADER + 'import subprocess\nprint("amd")\nsubprocess.run("echo hello", shell=True)\n', 'z.py': HEADER + 'def broken(:\n'}, 1, '存在阻断问题；⚠️ 扫描无效'),
 }
 
@@ -88,6 +93,10 @@ def main():
                 summary=args.output / (name + '.md'), native_only=False))
             text = summary.read_text()
             passed = code == expected and marker in text
+            if name == 'lizard-removed':
+                passed = passed and '函数复杂度较高' not in text
+            if name == 'style-removed':
+                passed = passed and 'YAML 规范问题' not in text and 'ENCODING.CRLF' not in text
             if name == 'failure-retains-blocker':
                 passed = passed and '静态分析发现潜在安全问题' in text and 'z.py' in text
             results.append({'case': name, 'exit': code, 'expected': expected, 'passed': passed})

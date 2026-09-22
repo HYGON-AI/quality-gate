@@ -4,8 +4,6 @@
 """Run deterministic quality tools and emit one normalized JSON document."""
 
 import argparse
-import csv
-import io
 import json
 import os
 import re
@@ -87,6 +85,8 @@ def scan_shellcheck(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
         comments = document.get("comments", []) if isinstance(document, dict) else document
         for item in comments:
             level = str(item.get("level") or "warning").lower()
+            if level == "style":
+                continue  # Preserve info/warning diagnostics about real behavior.
             severity = "error" if level == "error" else "warning" if level == "warning" else "info"
             findings.append(
                 {
@@ -210,7 +210,7 @@ def distinct_typed_key_lines(text):
 def scan_yamllint(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
     yaml_paths = [path for path in paths if Path(path).suffix.lower() in {".yaml", ".yml"}]
     yaml_paths = [path for path in yaml_paths if not is_yaml_template(path, (repo / path).read_text(encoding='utf-8'))]
-    config = "{extends: default, rules: {document-start: disable, truthy: disable, line-length: {max: 120, level: warning}}}"
+    config = "{rules: {key-duplicates: enable}}"
     findings = []
     for batch in batches(yaml_paths, 100):
         completed = run(
@@ -246,60 +246,6 @@ def scan_yamllint(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
     return findings
 
 
-def scan_lizard(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
-    extensions = {".py", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".cu", ".cuh", ".js", ".ts", ".java", ".go", ".rs"}
-    source_paths = [path for path in paths if Path(path).suffix.lower() in extensions]
-    findings = []
-    for batch in batches(source_paths, 120):
-        completed = run(["lizard", "--csv", *batch], cwd=repo, allowed=(0,))
-        content = completed.stdout.decode("utf-8", errors="replace")
-        if not content.strip():
-            continue
-        fieldnames = [
-            "NLOC",
-            "CCN",
-            "token",
-            "PARAM",
-            "length",
-            "location",
-            "file",
-            "function",
-            "long_name",
-            "start",
-            "end",
-        ]
-        for row in csv.DictReader(io.StringIO(content), fieldnames=fieldnames):
-            try:
-                ccn = int(row.get("CCN") or 0)
-                nloc = int(row.get("NLOC") or 0)
-                params = int(row.get("PARAM") or 0)
-                start = int(row.get("start") or 0)
-            except ValueError:
-                continue
-            reasons = []
-            if ccn > 15:
-                reasons.append("圈复杂度 {} > 15".format(ccn))
-            if nloc > 100:
-                reasons.append("函数有效代码行 {} > 100".format(nloc))
-            if params > 8:
-                reasons.append("参数数量 {} > 8".format(params))
-            if not reasons:
-                continue
-            findings.append(
-                {
-                    "tool": "lizard",
-                    "code": "complexity",
-                    "severity": "info",
-                    "path": str(row.get("file") or ""),
-                    "line": start or None,
-                    "title": "函数复杂度较高",
-                    "message": "{}；函数 {}".format(
-                        "，".join(reasons), str(row.get("function") or "unknown")
-                    ),
-                    "remediation": "建议拆分函数、降低分支复杂度；第一版不阻断。",
-                }
-            )
-    return findings
 
 
 def main() -> int:
@@ -326,7 +272,6 @@ def main() -> int:
         ("shellcheck", lambda: scan_shellcheck(args.repo, paths)),
         ("actionlint", lambda: scan_actionlint(args.repo, paths)),
         ("yamllint", lambda: scan_yamllint(args.repo, paths)),
-        ("lizard", lambda: scan_lizard(args.repo, paths)),
     )
     for name, scanner in scanners:
         try:

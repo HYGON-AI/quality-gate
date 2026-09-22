@@ -23,14 +23,14 @@ SENSITIVE_VENDOR = "amd"
 SENSITIVE_LINK = "xgmi"
 EXPECTED_WORKFLOW_CHECKS = {
     "governance-compliance-check": (
-        "Identity, license & wording",
+        "Code compliance",
         "identity,compliance,sensitive-diff",
     ),
     "repository-integrity-quality-check": (
-        "Repository & code quality",
+        "Code quality",
         "git-encoding,syntax-workflow,ruff,quality-tools",
     ),
-    "security-check": ("Secrets & SAST", "gitleaks,semgrep"),
+    "security-check": ("Code security", "gitleaks,semgrep"),
 }
 
 
@@ -170,11 +170,11 @@ def assert_mutable_action_is_advisory(root: Path) -> None:
     head = run(["git", "rev-parse", "HEAD"], repo)
     args = arguments(repo, base, head, root / "mutable-action.md")
     args.checks = "git-encoding,syntax-workflow,ruff,quality-tools"
-    args.display_name = "Repository & code quality"
+    args.display_name = "Code quality"
     summary, code = run_gate(args)
     assert code == 0, summary.read_text(encoding="utf-8")
     content = summary.read_text(encoding="utf-8")
-    assert "Repository & code quality" in content
+    assert "Code quality" in content
     assert "Workflow 使用可移动 Action" in content
     assert "Advisories / 提示问题：1" in content
     assert "Blockers / 阻断问题：0" in content
