@@ -19,6 +19,7 @@ from .artifacts import compiled_format
 from .yaml_checks import validate_yaml, is_template, comment_only_change
 from .header_notices import (comment_header, declarations, contains_declaration,
                              traditional_notices, preserves_traditional)
+from .license_expressions import license_ids, parse_expression, preserves_expression
 
 
 HYGON_COPYRIGHT = "Copyright (c) 2026 Hygon Information Technology Co., Ltd."
@@ -491,6 +492,10 @@ def scan_compliance(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     findings: List[Dict[str, Any]] = []
     allowed = set(policy["open_source"]["allowed_licenses"])
+    admission = policy["open_source"].get("license_admission", {})
+    approved_expressions = {
+        parse_expression(value) for value in admission.get("approved_expressions", [])
+    }
     forbidden_licenses = {
         str(value)
         for value in policy["open_source"]
@@ -570,8 +575,16 @@ def scan_compliance(
             continue
         text = raw.decode("utf-8", errors="replace")
         current_header = comment_header(text, header_lines)
-        license_matches = list(re.finditer(r'^SPDX-License-Identifier:\s*([^\n]+)', current_header, re.M | re.I))
+        license_matches = list(re.finditer(r'^SPDX-License-Identifier:[ \t]*([^\n]*)', current_header, re.M | re.I))
         licenses = [match.group(1) for match in license_matches]
+        current_expressions = []
+        for expression in licenses:
+            try:
+                current_expressions.append(parse_expression(expression))
+            except ValueError:
+                # Changed invalid statements get a specific blocker below.
+                # They can never prove retention of an original expression.
+                pass
         traditional = traditional_notices(current_header)
         recognized_license = any(license_id in allowed for license_id, _ in traditional)
         for license_match in license_matches:
@@ -579,8 +592,20 @@ def scan_compliance(
             line_number = _line_for_index(current_header, license_match.start())
             if change["kind"] not in {"A", "C"} and line_number not in scope["changed_lines"].get(path, set()):
                 continue
-            if expression not in allowed:
-                is_forbidden = expression in forbidden_licenses
+            try:
+                node = parse_expression(expression)
+            except ValueError as error:
+                findings.append(finding(
+                    "LICENSE.INVALID_SPDX_EXPRESSION", "compliance", path,
+                    "SPDX 许可证表达式语法无效",
+                    "{}：{}".format(expression, error),
+                    "核对真实许可证并修复 SPDX 表达式；不得删除原声明来规避检查。",
+                    level="blocker", line=line_number,
+                ))
+                continue
+            is_forbidden = expression in forbidden_licenses or bool(license_ids(node) & forbidden_licenses)
+            is_approved = (node[0] == "license" and node[1] in allowed) or node in approved_expressions
+            if is_forbidden or not is_approved:
                 findings.append(
                     finding(
                         "LICENSE.UNSUPPORTED_PR_FILE",
@@ -589,7 +614,11 @@ def scan_compliance(
                         (
                             "PR 文件使用禁止准入的许可证"
                             if is_forbidden
-                            else "PR 文件许可证需要法务/合规准入审批"
+                            else (
+                                "PR 复合许可证需要法务/合规准入审批"
+                                if node[0] != "license"
+                                else "PR 文件许可证需要法务/合规准入审批"
+                            )
                         ),
                         "SPDX-License-Identifier: {}".format(expression),
                         (
@@ -607,18 +636,44 @@ def scan_compliance(
             if base_raw is not None:
                 base_header = comment_header(base_raw.decode("utf-8", errors="replace"), header_lines)
                 for original in declarations(base_header):
+                    if original.lower().startswith("spdx-license-identifier:"):
+                        continue
                     if not contains_declaration(current_header, original):
                         findings.append(
                             finding(
                                 "COPYRIGHT.ORIGINAL_HEADER_REMOVED",
                                 "compliance",
                                 path,
-                                "PR 删除或替换了原版权/许可证声明",
-                                "基础分支文件头声明在 PR head 中不再存在",
+                                "PR 删除或替换了原 Copyright 声明",
+                                "基础分支的原权利人/年份/版权声明在 PR head 中不再存在",
                                 "恢复原声明；HYGON 声明只能追加，不能替换原权利人。",
                                 level="blocker",
                             )
                         )
+                        break
+                for original_match in re.finditer(
+                    r'^SPDX-License-Identifier:[ \t]*([^\n]*)', base_header, re.M | re.I
+                ):
+                    original = original_match.group(1).strip()
+                    try:
+                        old_expression = parse_expression(original)
+                        retained = any(
+                            preserves_expression(old_expression, current)
+                            for current in current_expressions
+                        )
+                    except ValueError:
+                        # Unknown old syntax is preserved only verbatim.
+                        retained = original in [value.strip() for value in licenses]
+                    if not retained:
+                        changed = bool(licenses)
+                        findings.append(finding(
+                            "LICENSE.ORIGINAL_SPDX_CHANGED" if changed else "LICENSE.ORIGINAL_SPDX_REMOVED",
+                            "compliance", path,
+                            "PR 变更了原 SPDX 许可证表达式" if changed else "PR 删除了原 SPDX 许可证声明",
+                            "原表达式 {!r} 未完整保留；当前表达式：{}".format(original, ", ".join(licenses) or "无"),
+                            "恢复原许可证声明，或提交许可证变更审核；AND/OR/WITH 不可机械互换。",
+                            level="blocker",
+                        ))
                         break
                 for license_id, original_body in traditional_notices(base_header):
                     if not preserves_traditional(current_header, original_body):

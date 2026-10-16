@@ -1036,6 +1036,19 @@ def scan_sensitive_diff(
                     level=legacy_level,
                 )
 
+        # Gitlinks name commits in a different object database, not blobs in
+        # the parent tree. Path checks above still apply, including renames.
+        # Do not fetch or execute untrusted submodule configuration here.
+        if change.get("new_mode") == "160000":
+            skipped.append(
+                "{}：Git 子模块指针 {} -> {}；已检查路径，"
+                "本次未扫描子模块内部源码".format(
+                    path, change.get("old_oid", "未知"),
+                    change.get("new_oid", "未知"),
+                )
+            )
+            continue
+
         try:
             data = read_blob(repo, scope["head"], path, maximum)
             if data is None:

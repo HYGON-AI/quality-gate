@@ -149,7 +149,7 @@ def assert_clear_violations_block(root: Path) -> None:
         "逃逸仓库的符号链接",
         "Python 文件存在明确语法错误",
         "删除或重写了原 LICENSE",
-        "删除或替换了原版权/许可证声明",
+        "删除或替换了原 Copyright 声明",
         "新增源码的版权和许可证归属待复核",
     ):
         assert marker in content, marker

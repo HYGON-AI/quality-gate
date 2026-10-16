@@ -56,7 +56,9 @@ def changed_files(repo: Path, start: str, head: str) -> List[Dict[str, Any]]:
     raw = git(
         repo,
         "diff",
-        "--name-status",
+        "--raw",
+        "--no-abbrev",
+        "--no-ext-diff",
         "-z",
         "--find-renames=100%",
         "--find-copies=100%",
@@ -68,7 +70,10 @@ def changed_files(repo: Path, start: str, head: str) -> List[Dict[str, Any]]:
     changes: List[Dict[str, Any]] = []
     index = 0
     while index < len(fields) and fields[index]:
-        status = fields[index].decode("ascii", errors="replace")
+        metadata = fields[index].decode("ascii", errors="replace").split()
+        if len(metadata) != 5 or not metadata[0].startswith(":"):
+            raise PRGitError("invalid raw diff record")
+        old_mode, new_mode, old_oid, new_oid, status = metadata
         index += 1
         kind = status[:1]
         if kind in {"R", "C"}:
@@ -89,6 +94,10 @@ def changed_files(repo: Path, start: str, head: str) -> List[Dict[str, Any]]:
                 "status": status,
                 "path": path,
                 "old_path": old_path,
+                "old_mode": old_mode[1:],
+                "new_mode": new_mode,
+                "old_oid": old_oid,
+                "new_oid": new_oid,
             }
         )
     return changes

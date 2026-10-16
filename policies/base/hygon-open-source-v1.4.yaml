@@ -16,6 +16,9 @@ license_admission:
     - MIT
     - BSD-3-Clause
     - Apache-2.0
+  # Only centrally reviewed combinations may be added here. Parsing an SPDX
+  # expression never approves it. Keep empty until a combination is approved.
+  approved_expressions: []
   # 其他单一许可证和复合表达式不是自动判定为“不合规代码”，
   # 但在法务/合规批准前仍阻断发布。
   legal_review:

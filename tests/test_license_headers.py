@@ -66,7 +66,7 @@ class HeaderPreservationTests(unittest.TestCase):
 
     def test_removed_spdx_does_not_hide_behind_body(self):
         body = render_notice(MIT_NOTICE)
-        self.assertIn('COPYRIGHT.ORIGINAL_HEADER_REMOVED', [f['rule_id'] for f in self.scan('# SPDX-License-Identifier: MIT\n' + body, body)])
+        self.assertIn('LICENSE.ORIGINAL_SPDX_REMOVED', [f['rule_id'] for f in self.scan('# SPDX-License-Identifier: MIT\n' + body, body)])
 
     def test_holder_substring_does_not_count_as_preserved(self):
         self.assertTrue(self.scan('# Copyright Owner\n# SPDX-License-Identifier: MIT\n', '# Copyright OwnerTwo\n# SPDX-License-Identifier: MIT\n'))

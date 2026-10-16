@@ -9,6 +9,8 @@ from typing import Any, Dict
 
 import yaml
 
+from .license_expressions import contains_exception, license_ids, parse_expression
+
 
 DEFAULT_POLICY_ID = "hygon-pr-gate-v1.2"
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -139,6 +141,17 @@ def _validate_central_policy(
             raise ValueError(
                 "open-source license_admission must route other licenses to legal review"
             )
+        approved_expressions = _string_list(
+            admission, "approved_expressions", "license_admission.approved_expressions"
+        )
+        for expression in approved_expressions:
+            node = parse_expression(expression)
+            if (node[0] == "license" or contains_exception(node)
+                    or not license_ids(node).issubset(SUPPORTED_LICENSES)):
+                raise ValueError(
+                    "approved_expressions requires reviewed combinations of approved "
+                    "licenses without exceptions"
+                )
     _validate_sensitive_diff(pr_policy)
 
 

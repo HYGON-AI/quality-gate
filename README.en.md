@@ -111,6 +111,17 @@ complete license remains blocking. No source is automatically rewritten and
 H1/H2/H3/originality is not inferred. Recognition is bounded by the configured
 header line limit and is not a proof of legal applicability.
 
+Gitlinks (mode `160000`) are inventoried as parent-repository path and commit
+pointer changes, not read as file blobs. Reports disclose that submodule source
+was not scanned; converting a Gitlink into a regular file still scans its content.
+
+Bounded SPDX parsing distinguishes `AND`, `OR`, `WITH`, and parentheses. Valid
+syntax is not approval: compound expressions still require review unless the
+central `license_admission.approved_expressions` list explicitly approves the
+combination. That list is empty by default. Copyright and SPDX changes have
+separate diagnostics; retaining an old expression under `AND` does not report
+Copyright removal or bypass admission and license-body preservation checks.
+
 Internal job IDs and `Checks / All required checks` remain stable. The three
 display names are updated as listed above. Summaries show the decision,
 counts, actual version and SHA first; details are folded and scanners with no
