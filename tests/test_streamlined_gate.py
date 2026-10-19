@@ -40,6 +40,7 @@ class StreamlinedGateTests(unittest.TestCase):
             with patch.object(executor, '_docker') as docker:
                 _, status = executor._semgrep(ROOT, {'changed_lines': {}}, reports, targets + ['x.cpp', 'x.h'])
                 arguments = docker.call_args.args[3]
+                self.assertIn('--disable-version-check', arguments)
                 self.assertEqual([v for v in arguments if v.startswith('/repo/')], ['/repo/' + v for v in targets])
                 self.assertEqual(status['state'], 'passed')
 

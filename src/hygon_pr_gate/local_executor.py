@@ -200,7 +200,7 @@ class LocalDockerExecutor:
             repo,
             reports,
             [
-                "semgrep", "scan", "--config", "/rules/hygon-security-v1.yml",
+                "semgrep", "scan", "--disable-version-check", "--config", "/rules/hygon-security-v1.yml",
                 "--metrics", "off", "--json", "--output", "/reports/semgrep.json",
                 "--error", *["/repo/{}".format(path) for path in targets],
             ],
