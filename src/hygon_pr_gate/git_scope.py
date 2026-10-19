@@ -97,11 +97,16 @@ def changed_files(repo: Path, start: str, head: str) -> List[Dict[str, Any]]:
 def changed_lines(repo: Path, start: str, head: str, paths: Iterable[str]) -> Dict[str, Set[int]]:
     result: Dict[str, Set[int]] = {}
     for path in paths:
+        if mode(repo, head, path) == '160000':
+            result[path] = set()
+            continue
         output = git(
             repo,
             "diff",
             "--unified=0",
             "--no-ext-diff",
+            "--no-textconv",
+            "--text",
             start,
             head,
             "--",
@@ -167,6 +172,9 @@ def blob_size(repo: Path, commit: str, path: str) -> Optional[int]:
 
 
 def read_blob(repo: Path, commit: str, path: str, max_bytes: Optional[int] = None) -> Optional[bytes]:
+    # Gitlinks refer to commits in another object database, not file contents.
+    if mode(repo, commit, path) == '160000':
+        return None
     size = blob_size(repo, commit, path)
     if size is None or (max_bytes is not None and size > max_bytes):
         return None

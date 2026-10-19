@@ -5,7 +5,11 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 
 [English documentation](README.en.md)
 
-本文描述 `v2.0.7`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+本文描述 `v2.0.8`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+
+v2.0.8 修复 Python 分支分析内存膨胀、Git 子模块误读及仓库配置隐藏必需检查的问题；
+补充资源保护、扫描器故障分类和 Python 版本诊断；已批准的 `OpenMDW-1.1` 纳入自动准入。
+完整改动和测试要求见 [发布说明](docs/releases/v2.0.8.md)。
 
 v2.0.7 将三个检查组统一命名为代码合规、代码质量、代码安全，汇总名称不变。
 PR 门禁移除 Lizard、YAML 纯排版、ShellCheck style 和 CRLF 提醒；Semgrep 仅扫描
@@ -18,13 +22,13 @@ Python/JS/TS，明确声明 C/C++ 不在安全扫描范围。保留扫描的未�
 2. 根据目标仓库实际情况调整 `pull_request.branches`。
 3. 将 `QUALITY_GATE_REF` 替换为已审核的发布 Tag 或完整 Commit SHA。
 
-以下示例使用固定版本 [`v2.0.7`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.7)：
+以下示例使用固定版本 [`v2.0.8`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.8)：
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.7
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.8
     permissions:
       contents: read
 ```
@@ -81,6 +85,8 @@ Checks / All required checks
 
 ### 文件头检查边界
 
+- 已批准 SPDX 单一标识：`MIT`、`BSD-3-Clause`、`Apache-2.0`、`OpenMDW-1.1`。
+  OpenMDW-1.1 按已批准许可证处理，不表示其法律条款与 MIT 相同；其他标识及复合表达式仍需审批。
 - 原版权/SPDX 声明允许空白、换行和常见注释包装变化；权利人、年份和声明内容不能删除或替换。
 - 完整标准 MIT、BSD-3-Clause 正文和 Apache-2.0 标准声明头可在没有 SPDX 时识别；
   原正文的授权条件、免责声明被删除或改写仍阻断，新增 SPDX 不能替代原正文。
@@ -116,7 +122,7 @@ Checks / All required checks
 
 Runner 必须提供：
 
-- Git、Docker、Bash 和兼容工作流所用 Action 的 Runner；
+- Git、Docker、Bash、GNU timeout 和兼容工作流所用 Action 的 Runner；
 - Python 3.9+、可写临时目录及 PyYAML；
 - 策略文件
   [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml)
@@ -126,6 +132,15 @@ Runner 必须提供：
 优先复用已有 Python 和 PyYAML；缺少 PyYAML 时在 `RUNNER_TEMP` 创建独立 venv，
 安装 `PyYAML==6.0.3`。此时需要 venv/ensurepip 和 PyPI 网络访问；不会自动下载
 Python，也不修改系统环境。预装 PyYAML 可避免这一步联网。
+优先选择 PATH 中的 Python 3.12；可通过 `HYGON_PYTHON` 指定已有解释器（其次为激活的 venv）。
+Python 3.9 是引擎最低版本，不代表能解析所有项目的新语法。建议三个门禁节点统一预装
+Python 3.12.13 和 PyYAML；其他仓库 CI 的构建/测试解释器不必随之更换。
+
+原生分析按候选数量、字符串长度、计算量和时间设置预算；超限为 Invalid Scan。
+工作流内原生进程另限制 4 GiB 虚拟内存、600 秒 CPU 时间和 35 分钟墙钟时间，
+Docker 扫描器继续使用独立的资源限制。阶段日志帮助区分卡在 Git、原生分析还是外部扫描器。
+错误输出仅保留退出码和安全的故障分类，避免原始 stderr 中源码/密钥泄漏。
+镜像不会自动重拉，磁盘不会自动清理，失败不会自动重试或跳过。
 
 所有扫描镜像（包括 Gitleaks）必须在 Runner 初始化阶段预装。PR 执行期间不会联网拉取镜像；镜像缺失
 或摘要不匹配时，相应检查会返回 `Invalid Scan`，不会静默通过。Runner 交付或清理后，

@@ -21,10 +21,14 @@ trap 'fail "请查看本步骤上方的具体错误；源码扫描尚未开始�
 # Probe outside the target checkout; ignore injected PYTHONPATH/PYTHONHOME.
 cd "$RUNNER_TEMP"
 candidates=()
+if [[ -n "${HYGON_PYTHON:-}" ]]; then
+  candidates+=("$HYGON_PYTHON")
+fi
 if [[ -n "${VIRTUAL_ENV:-}" ]]; then
   candidates+=("$VIRTUAL_ENV/bin/python")
 fi
-candidates+=(python3 python python3.14 python3.13 python3.12 python3.11 python3.10 python3.9)
+# Prefer the fleet's Python 3.12 without changing /usr/bin/python3.
+candidates+=(python3.12 python3.13 python3.14 python3.11 python3.10 python3 python python3.9)
 gate_python=""
 base_python=""
 for candidate in "${candidates[@]}"; do
@@ -56,6 +60,6 @@ else
 fi
 
 phase="验证 Python 和 PyYAML"
-"$gate_python" -E -c 'import sys, yaml; print("门禁 Python：", sys.executable); print("PyYAML：", yaml.__version__)'
+"$gate_python" -E -c 'import sys, yaml; print("门禁 Python：", sys.executable, sys.version.split()[0]); print("PyYAML：", yaml.__version__)'
 printf 'gate-path=%s\npython-path=%s\n' "$GITHUB_ACTION_PATH" "$gate_python" >> "$GITHUB_OUTPUT"
 echo "质量门禁 Python 环境已就绪。"

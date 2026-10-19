@@ -6,7 +6,11 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.7`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.8`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.8 fixes unbounded Python branch analysis, gitlink handling and caller-config
+bypasses, improves operational diagnostics, and admits approved OpenMDW-1.1 SPDX
+headers. See [release notes](docs/releases/v2.0.8.md) for limits and rollout requirements.
 
 v2.0.7 renames the three check groups while preserving the aggregate check and internal job IDs.
 PR scans remove Lizard, YAML formatting, ShellCheck style diagnostics and CRLF advisories.
@@ -21,13 +25,13 @@ tool failures and missing reports from retained scanners still fail the gate.
 3. Replace `QUALITY_GATE_REF` with a reviewed release tag or full Commit SHA.
 
 The following example uses the current stable release
-[`v2.0.7`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.7):
+[`v2.0.8`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.8):
 
 ```yaml
 jobs:
   checks:
     name: Checks
-    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.7
+    uses: HYGON-AI/quality-gate/.github/workflows/pr-quality-gate.yml@v2.0.8
     permissions:
       contents: read
 ```
@@ -102,6 +106,10 @@ Scanner failures or missing reports remain invalid scans.
 
 Whitespace, line wrapping and common comment wrappers do not change a notice.
 Removing or replacing original copyright/SPDX declarations still blocks.
+Approved individual SPDX IDs are MIT, BSD-3-Clause, Apache-2.0 and OpenMDW-1.1.
+Admission does not imply legal equivalence; other IDs and compound expressions
+still require review. Original notices must be preserved.
+
 Complete standard MIT/BSD-3-Clause bodies and the Apache-2.0 boilerplate notice
 are recognized without SPDX. Removing their original terms or disclaimers
 blocks even if SPDX remains. Names alone, partial bodies and unknown variants
@@ -133,11 +141,14 @@ The default runner labels are:
 
 The runner must provide:
 
-- Git, Docker, Python 3.9+, and PyYAML;
+- Git, Docker, GNU timeout, Python 3.9+, and PyYAML;
 - the scanner images pinned in
   [`policies/quality-security/hygon-quality-security-v1.1.yaml`](policies/quality-security/hygon-quality-security-v1.1.yaml);
 - an isolated, disposable, or equivalently hardened execution environment.
 
+The action prefers existing Python 3.12 on PATH, with optional HYGON_PYTHON or
+active-venv precedence. Python 3.9 is the engine minimum, not a guarantee that it
+can parse newer project syntax. This does not change the repository's CI runtime.
 The action reuses existing Python and PyYAML. If PyYAML is missing, it creates
 an isolated venv in `RUNNER_TEMP` and installs `PyYAML==6.0.3`. This requires
 venv/ensurepip and PyPI connectivity. Python itself is never downloaded;

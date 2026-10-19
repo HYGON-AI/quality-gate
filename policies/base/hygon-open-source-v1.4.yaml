@@ -10,12 +10,14 @@ allowed_licenses:
   - MIT
   - BSD-3-Clause
   - Apache-2.0
+  - OpenMDW-1.1
 license_admission:
-  # 只有以下三种许可证可以由扫描器自动批准。
+  # 仅以下已批准许可证自动准入；OpenMDW-1.1 于 2026-10-19 确认批准。
   approved:
     - MIT
     - BSD-3-Clause
     - Apache-2.0
+    - OpenMDW-1.1
   # 其他单一许可证和复合表达式不是自动判定为“不合规代码”，
   # 但在法务/合规批准前仍阻断发布。
   legal_review:

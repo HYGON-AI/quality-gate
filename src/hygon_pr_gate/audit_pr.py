@@ -6,6 +6,7 @@
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -159,6 +160,7 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
     policy_root = args.policy_root.resolve()
     summary = args.summary.resolve()
     data: Dict[str, Any] = {
+        "python_version": sys.version.split()[0],
         "gate_version": os.environ.get('QUALITY_GATE_VERSION', '未标记'),
         "gate_sha": os.environ.get('QUALITY_GATE_SHA', '未知'),
         "repository": args.repository,
@@ -177,6 +179,7 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
         "operational_error": None,
     }
     try:
+        print('[gate] Python={} executable={}'.format(sys.version.split()[0], sys.executable), flush=True)
         selected = _selected_checks(getattr(args, "checks", "all"))
         data["checks"] = selected
         display_name, display_name_zh = _check_display_name(selected)
@@ -190,13 +193,17 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
         data["display_name"] = display_name
         data["display_name_zh"] = display_name_zh
         policy = load_policy(policy_root, args.repository)
+        print('[gate] collecting Git scope', flush=True)
         scope = collect_scope(repo, args.base.lower(), args.head.lower())
         data["scope"] = scope
         for name in selected:
             scanner = NATIVE_CHECKS.get(name)
             if scanner is None:
                 continue
+            started = time.monotonic()
+            print('[gate] native={} started'.format(name), flush=True)
             current, status = scanner(repo, scope, policy)
+            print('[gate] native={} state={} elapsed={:.2f}s'.format(name, status['state'], time.monotonic() - started), flush=True)
             data["findings"].extend(current)
             data["statuses"].append(status)
         external = [name for name in selected if name in EXTERNAL_CHECKS]
@@ -224,9 +231,10 @@ def run_gate(args: argparse.Namespace) -> Tuple[Path, int]:
         elif external:
             raise ValueError("central PR policy may not disable external scanners")
     except Exception as error:
-        data["operational_error"] = "{}: {}".format(type(error).__name__, str(error))
+        message = '{}: {}'.format(type(error).__name__, str(error))
+        data["operational_error"] = message
         data["statuses"].append(
-            scanner_status("pr-gate-orchestrator", "failed", detail=str(error)[:800])
+            scanner_status("pr-gate-orchestrator", "failed", detail=message[:800])
         )
     failures = [s["detail"] for s in data["statuses"] if s["state"] == "failed"]
     if failures:
