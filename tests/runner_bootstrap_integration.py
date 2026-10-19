@@ -74,6 +74,23 @@ class RunnerBootstrapTests(unittest.TestCase):
         self.assertIn('无需下载或安装', result.stdout)
         self.assertFalse(list(self.directory.glob('quality-gate-python.*')))
 
+    def test_versioned_python_preferred_over_generic(self):
+        self.bin.joinpath('python3').symlink_to(sys.executable)
+        self.bin.joinpath('python3.12').symlink_to(sys.executable)
+        self.block_network()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('python-path=' + str(self.bin/'python3.12'), self.output.read_text())
+
+    def test_explicit_interpreter_preferred(self):
+        self.bin.joinpath('preferred-python').symlink_to(sys.executable)
+        self.bin.joinpath('python3.12').symlink_to(sys.executable)
+        self.env['HYGON_PYTHON'] = str(self.bin/'preferred-python')
+        self.block_network()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('python-path=' + str(self.bin/'preferred-python'), self.output.read_text())
+
     def test_dependency_download_failure_is_explicit(self):
         self.clean_python()
         self.block_network()

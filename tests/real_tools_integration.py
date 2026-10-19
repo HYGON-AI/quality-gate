@@ -24,6 +24,12 @@ HEADER_BASELINES = {
     'header-clause-deletion': traditional(BSD_NOTICE),
 }
 CASES = {
+    'openmdw': ({'demo.py': COPYRIGHT + '# SPDX-License-Identifier: OpenMDW-1.1\nx = 1\n'}, 0, '本检查通过'),
+    'ruff-config-bypass': ({'demo.py': HEADER + 'value = 0\ndef f():\n    print(value)  # noqa: F823\n    value = 1\n',
+        'ruff.toml': '[lint.per-file-ignores]\n"demo.py" = ["F823"]\n'}, 2, 'F823'),
+    'ruff-attribute-bypass': ({'demo.py': HEADER + 'value = 0\ndef f():\n    print(value)\n    value = 1\n',
+        '.gitattributes': '*.py -diff\n'}, 2, 'F823'),
+    'native-branches': ({'demo.py': HEADER + 'flag = True\n' + 'if condition: pass\n' * 500}, 0, '本检查通过'),
     'header-mit': ({'notice.py': traditional(MIT_NOTICE)}, 0, '本检查通过'),
     'header-bsd': ({'notice.py': traditional(BSD_NOTICE)}, 0, '本检查通过'),
     'header-apache': ({'notice.py': traditional(APACHE_NOTICE)}, 0, '本检查通过'),

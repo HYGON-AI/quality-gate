@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  QUALITY_GATE_VERSION: v2.0.7
+  QUALITY_GATE_VERSION: v2.0.8
 
 jobs:
   incremental_check:
@@ -87,9 +87,13 @@ jobs:
           test "$(git -C target rev-parse "${HEAD_SHA}^{commit}")" = "$HEAD_SHA"
 
           summary="$RUNNER_TEMP/${CHECK_NAME}.md"
+          # Bound the native Python process (not Docker containers, which have
+          # their own limits). Prevent a gate defect exhausting the CI host.
+          ulimit -v 4194304
+          ulimit -t 600
           set +e
           PYTHONPATH="$QUALITY_GATE_ROOT/src" \
-            "$HYGON_PYTHON" -m hygon_pr_gate \
+            timeout --signal=TERM --kill-after=30s 35m "$HYGON_PYTHON" -m hygon_pr_gate \
               --repo "$GITHUB_WORKSPACE/target" \
               --repository "$TARGET_REPOSITORY" \
               --base "$BASE_SHA" \
@@ -109,7 +113,7 @@ jobs:
             {
               echo "# ${CHECK_NAME}"
               echo ""
-              echo "Invalid scan: no result summary was generated."
+              echo "Invalid scan: no result summary was generated (exit=$result). Check native resource/time limits and the last phase log."
             } >> "$GITHUB_STEP_SUMMARY"
             result=1
           fi

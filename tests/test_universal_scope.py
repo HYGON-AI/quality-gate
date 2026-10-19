@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class UniversalScopeTests(unittest.TestCase):
     def setUp(self):
         self.policy = load_policy(ROOT / 'policies', 'different/project')
+        file_mode = patch('hygon_pr_gate.sensitive_diff_check.mode', return_value='100644')
+        file_mode.start()
+        self.addCleanup(file_mode.stop)
 
     def scan(self, path, content):
         scope = {'head': '1' * 40, 'changes': [{'kind': 'A', 'path': path}],

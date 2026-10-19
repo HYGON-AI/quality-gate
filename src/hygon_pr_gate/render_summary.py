@@ -66,6 +66,7 @@ def render_summary(data: Dict[str, Any], output: Path) -> None:
         ),
         "- Changed Files / 变更文件：{}".format(len(data["scope"]["changes"])),
         "- Commits / 引入提交：{}".format(len(data["scope"]["commits"])),
+        "- Python / 扫描解释器：{}".format(_escape(data.get('python_version', '未记录'))),
         "",
         "## Results / 检查结果",
         "",

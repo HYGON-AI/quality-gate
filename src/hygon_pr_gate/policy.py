@@ -12,7 +12,7 @@ import yaml
 
 DEFAULT_POLICY_ID = "hygon-pr-gate-v1.2"
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
-SUPPORTED_LICENSES = {"MIT", "BSD-3-Clause", "Apache-2.0"}
+SUPPORTED_LICENSES = {"MIT", "BSD-3-Clause", "Apache-2.0", "OpenMDW-1.1"}
 SENSITIVE_LIST_FIELDS = {
     "legacy_dcu": {
         "terms",

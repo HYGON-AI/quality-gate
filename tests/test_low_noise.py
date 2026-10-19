@@ -121,7 +121,8 @@ class AdvisoryRegressionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 parse_gitleaks(path)
 
-    def test_wording_is_not_a_blocker(self):
+    @patch('hygon_pr_gate.sensitive_diff_check.mode', return_value='100644')
+    def test_wording_is_not_a_blocker(self, _mode):
         policy = load_policy(ROOT / 'policies', 'any/project')
         scope = {'head': 'head', 'changes': [{'kind': 'A', 'path': 'src/hcu/runtime.py'}], 'changed_lines': {}}
         with patch('hygon_pr_gate.sensitive_diff_check.read_blob', return_value=b'print("AMD GPU with XGMI")\n'):

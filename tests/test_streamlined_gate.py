@@ -40,6 +40,7 @@ class StreamlinedGateTests(unittest.TestCase):
             with patch.object(executor, '_docker') as docker:
                 _, status = executor._semgrep(ROOT, {'changed_lines': {}}, reports, targets + ['x.cpp', 'x.h'])
                 arguments = docker.call_args.args[3]
+                self.assertIn('--disable-version-check', arguments)
                 self.assertEqual([v for v in arguments if v.startswith('/repo/')], ['/repo/' + v for v in targets])
                 self.assertEqual(status['state'], 'passed')
 
@@ -88,7 +89,7 @@ class StreamlinedGateTests(unittest.TestCase):
         self.assertEqual([item['display_name'] for item in matrix], ['Code compliance', 'Code quality', 'Code security'])
         self.assertEqual([item['check_id'] for item in matrix], ['governance-compliance-check', 'repository-integrity-quality-check', 'security-check'])
         self.assertEqual(jobs['hygon-pr-gate-result-check']['name'], 'All required checks')
-        self.assertEqual(workflow['env']['QUALITY_GATE_VERSION'], 'v2.0.7')
+        self.assertEqual(workflow['env']['QUALITY_GATE_VERSION'], 'v2.0.8')
 
 
 if __name__ == '__main__':

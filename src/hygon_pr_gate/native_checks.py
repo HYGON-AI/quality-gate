@@ -6,6 +6,7 @@ import ast
 import fnmatch
 import posixpath
 import re
+import sys
 import unicodedata
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -198,6 +199,8 @@ def scan_git_and_encoding(
         if change["kind"] == "D":
             continue
         current_mode = mode(repo, scope["head"], path)
+        if current_mode == '160000':
+            continue
         if current_mode == "120000":
             raw = read_blob(repo, scope["head"], path, 8192) or b""
             target = raw.decode("utf-8", errors="replace")
@@ -352,8 +355,8 @@ def scan_syntax_and_workflows(
                         "native-syntax",
                         path,
                         "Python 文件存在明确语法错误",
-                        str(error.msg),
-                        "修复 Python 语法后重新提交。",
+                        '{}；扫描解释器 Python {}'.format(error.msg, sys.version.split()[0]),
+                        "核对项目要求的 Python 版本与扫描解释器是否兼容；环境符合要求后再判断和修复源码语法。",
                         level="advisory" if existing_debt else "blocker",
                         line=error.lineno,
                     )

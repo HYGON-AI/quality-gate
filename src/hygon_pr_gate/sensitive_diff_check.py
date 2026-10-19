@@ -8,12 +8,13 @@ import json
 import string
 import itertools
 import re
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from hygon_quality_security.models import finding, scanner_status
 
-from .git_scope import read_blob, blob_size, read_blob_prefix
+from .git_scope import read_blob, blob_size, read_blob_prefix, mode
 from .artifacts import compiled_format
 
 
@@ -398,6 +399,11 @@ def _hcu_truth_states(
 
 
 class _PythonRuntimeVisitor(ast.NodeVisitor):
+    MAX_VALUES = 256
+    MAX_STRING = 65536
+    MAX_OPERATIONS = 500000
+    MAX_SECONDS = 30
+
     def __init__(
         self,
         *,
@@ -419,6 +425,39 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         self.allowed_patterns = allowed_patterns
         self.matches: List[Tuple[int, str, str, str]] = []
         self.seen: Set[Tuple[int, str, str]] = set()
+        self.operations = 0
+        self.deadline = time.monotonic() + self.MAX_SECONDS
+
+    def _budget(self):
+        self.operations += 1
+        if self.operations > self.MAX_OPERATIONS or time.monotonic() > self.deadline:
+            raise RuntimeError('Python runtime analysis budget exceeded (work/time); scan invalid')
+
+    def visit(self, node):
+        self._budget()
+        return super().visit(node)
+
+    def _bounded(self, values):
+        """Deduplicate typed values, preserving all incremental source origins."""
+        unique = {}
+        for value, origins in values:
+            self._budget()
+            if isinstance(value, (str, bytes)) and len(value) > self.MAX_STRING:
+                raise RuntimeError('Python runtime analysis budget exceeded (string); scan invalid')
+            key = (type(value), value)
+            unique[key] = unique.get(key, frozenset()) | origins
+            if len(unique) > self.MAX_VALUES:
+                raise RuntimeError('Python runtime analysis budget exceeded (candidates); scan invalid')
+        return [(key[1], origins) for key, origins in unique.items()]
+
+    def _merge(self, left, right):
+        return {key: self._bounded(itertools.chain(left.get(key, ()), right.get(key, ())))
+                for key in left.keys() | right.keys()}
+
+    def _join(self, left, right):
+        if len(left) + len(right) > self.MAX_STRING:
+            raise RuntimeError('Python runtime analysis budget exceeded (string); scan invalid')
+        return left + right
 
     def _visit_in_context(self, nodes: Sequence[ast.stmt], context: bool) -> None:
         previous = self.context
@@ -429,11 +468,12 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
 
     def _values(self, node, depth=0):
         """Evaluate a bounded subset of expressions without running target code."""
+        self._budget()
         if depth > 20:
-            return []
+            raise RuntimeError('Python runtime analysis budget exceeded (expression depth); scan invalid')
         location = frozenset({getattr(node, 'lineno', 1)})
         if isinstance(node, ast.Constant):
-            return [(node.value, location)]
+            return self._bounded([(node.value, location)])
         if isinstance(node, ast.Name):
             return self.values.get(node.id, [])
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
@@ -441,10 +481,11 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
             for left, ls in self._values(node.left, depth + 1):
                 for right, rs in self._values(node.right, depth + 1):
                     if type(left) == type(right) and isinstance(left, (str, int, float)):
-                        result.append((left + right, ls | rs))
-                        if len(result) > 64:
-                            return []
-            return result
+                        self._budget()
+                        result.append((self._join(left, right) if isinstance(left, str) else left + right, ls | rs))
+                        if len(result) > self.MAX_VALUES:
+                            result = self._bounded(result)
+            return self._bounded(result)
         if isinstance(node, ast.JoinedStr):
             result = [('', frozenset())]
             for part in node.values:
@@ -456,9 +497,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
                               for v, ls in self._values(part.value, depth + 1)] or [("\ufffc", location)]
                 else:
                     values = self._values(part, depth + 1)
-                result = [(a + str(b), la | lb) for a, la in result for b, lb in values]
-                if len(result) > 64:
-                    return []
+                result = self._bounded((self._join(a, str(b)), la | lb) for a, la in result for b, lb in values)
             return result
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'format':
             templates = self._values(node.func.value, depth + 1)
@@ -468,13 +507,14 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
             for template, source in templates:
                 if not isinstance(template, str):
                     continue
-                for combo in itertools.islice(itertools.product(*(arguments + list(keywords.values()))), 64):
+                for combo in itertools.product(*(arguments + list(keywords.values()))):
+                    self._budget()
                     positional = combo[:len(arguments)]
                     named = dict(zip(keywords, combo[len(arguments):]))
                     result, origins, auto = '', source, 0
                     try:
                         for literal, field, spec, conversion in string.Formatter().parse(template):
-                            result += literal
+                            result = self._join(result, literal)
                             if field is None:
                                 continue
                             if field == '':
@@ -482,13 +522,15 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
                             value, origin = positional[int(field)] if field.isdigit() else named.get(field, ("\ufffc", location))
                             origins |= origin
                             if spec or value == "\ufffc":
-                                result += "\ufffc"
+                                result = self._join(result, "\ufffc")
                             else:
-                                result += repr(value) if conversion == 'r' else ascii(value) if conversion == 'a' else str(value)
+                                result = self._join(result, repr(value) if conversion == 'r' else ascii(value) if conversion == 'a' else str(value))
                         results.append((result, origins))
+                        if len(results) > self.MAX_VALUES:
+                            results = self._bounded(results)
                     except (ValueError, IndexError):
                         continue
-            return results
+            return self._bounded(results)
         # Arbitrary function calls are not their arguments' output values.
         return []
 
@@ -527,8 +569,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         for statement in node.orelse:
             self.visit(statement)
         negative = self.values
-        self.values = {key: positive.get(key, []) + negative.get(key, [])
-                       for key in positive.keys() | negative.keys()}
+        self.values = self._merge(positive, negative)
 
     def visit_For(self, node):
         self.visit(node.iter)
@@ -541,8 +582,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
             self.values.pop(name, None)
         for statement in node.body:
             self.visit(statement)
-        self.values = {key: before.get(key, []) + self.values.get(key, [])
-                       for key in before.keys() | self.values.keys()}
+        self.values = self._merge(before, self.values)
         for statement in node.orelse:
             self.visit(statement)
 
@@ -554,8 +594,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         if not (isinstance(node.test, ast.Constant) and not node.test.value):
             for statement in node.body:
                 self.visit(statement)
-        self.values = {key: before.get(key, []) + self.values.get(key, [])
-                       for key in before.keys() | self.values.keys()}
+        self.values = self._merge(before, self.values)
         for statement in node.orelse:
             self.visit(statement)
 
@@ -1037,6 +1076,9 @@ def scan_sensitive_diff(
                 )
 
         try:
+            if mode(repo, scope['head'], path) == '160000':
+                skipped.append('{}：gitlink 子模块引用；仅检查路径，不读取为源码；.gitmodules 仍检查'.format(path))
+                continue
             data = read_blob(repo, scope["head"], path, maximum)
             if data is None:
                 size = blob_size(repo, scope["head"], path)

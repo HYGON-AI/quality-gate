@@ -3,8 +3,12 @@
 """Run pinned scanners locally on the self-hosted quality runner."""
 
 import os
+import json
+import re
+import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
@@ -16,7 +20,7 @@ from hygon_quality_security.scanner_parsers import (
     parse_semgrep,
 )
 
-from .git_scope import git
+from .git_scope import git, mode
 
 
 class LocalExecutionError(RuntimeError):
@@ -26,20 +30,46 @@ class LocalExecutionError(RuntimeError):
 SOURCE_EXTENSIONS = {".py", ".pyi", ".js", ".jsx", ".ts", ".tsx"}
 
 
+def _safe_cause(completed):
+    """Classify diagnostics without publishing arbitrary scanner/secret output."""
+    data = b'\n'.join(v for v in (completed.stdout, completed.stderr) if isinstance(v, bytes)).lower()
+    for pattern, label in (
+        (b'no space left', 'ENOSPC: No space left on device (check Docker data-root, /tmp, reports and inodes)'),
+        (b'permission denied', 'EACCES: permission denied'),
+        (b'no such image', 'pinned image missing; ask operations to restore exact digest'),
+        (b'cannot connect to the docker daemon', 'Docker daemon unavailable'),
+        (b'out of memory', 'out of memory'),
+        (b'connection refused', 'connection refused'),
+    ):
+        if pattern in data:
+            return label
+    return 'unclassified tool failure; raw stdout/stderr withheld to protect source and secrets'
+
+
+def _require_report(report, completed):
+    try:
+        with report.open(encoding='utf-8') as stream:
+            json.load(stream)
+    except (OSError, ValueError) as error:
+        state = 'missing' if isinstance(error, FileNotFoundError) else 'unreadable or malformed'
+        raise ValueError('{} report {}; exit={}; {}'.format(
+            report.name, state, completed.returncode, _safe_cause(completed))) from None
+
+
 def _run(command: Sequence[str], *, allowed: Tuple[int, ...] = (0,), timeout: int = 1800) -> subprocess.CompletedProcess:
-    completed = subprocess.run(
-        list(command),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-        timeout=timeout,
-    )
+    try:
+        completed = subprocess.run(
+            list(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            check=False, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise LocalExecutionError('{} timed out after {}s; scan invalid'.format(command[0], timeout)) from None
     if completed.returncode not in allowed:
         raise LocalExecutionError(
             "{} failed ({}): {}".format(
                 command[0],
                 completed.returncode,
-                completed.stderr.decode("utf-8", errors="replace").strip()[:1000],
+                _safe_cause(completed),
             )
         )
     return completed
@@ -79,7 +109,10 @@ class LocalDockerExecutor:
 
     def _verify_image(self, name: str) -> None:
         image = str(self.images[name])
-        _run(["docker", "image", "inspect", image], timeout=60)
+        try:
+            _run(["docker", "image", "inspect", image], timeout=60)
+        except LocalExecutionError as error:
+            raise LocalExecutionError('image preflight {} ({}): {}'.format(name, image, error)) from None
 
     def _docker(
         self,
@@ -93,8 +126,12 @@ class LocalDockerExecutor:
         allowed: Tuple[int, ...] = (0,),
     ) -> subprocess.CompletedProcess:
         self._verify_image(image_name)
+        if shutil.disk_usage(reports).free < 256 * 1024 * 1024:
+            raise LocalExecutionError('reports filesystem has less than 256 MiB available; scan not started')
+        cidfile = reports / (image_name + '.cid')
         command = [
             "docker", "run", "--rm", "--pull=never", "--network=none",
+            "--cidfile", str(cidfile),
             "--cap-drop=ALL", "--security-opt=no-new-privileges",
             "--cpus", self.docker_cpus, "--memory", self.docker_memory,
             "--user", "{}:{}".format(self.uid, self.gid),
@@ -108,7 +145,22 @@ class LocalDockerExecutor:
         for key, value in environment:
             command.extend(["-e", "{}={}".format(key, value)])
         command.extend([str(self.images[image_name]), *map(str, arguments)])
-        return _run(command, allowed=allowed, timeout=self.timeout)
+        started = time.monotonic()
+        print('[gate] scanner={} started (timeout={}s, memory={})'.format(image_name, self.timeout, self.docker_memory), flush=True)
+        try:
+            return _run(command, allowed=allowed, timeout=self.timeout)
+        finally:
+            # A timed-out Docker client does not necessarily stop its container.
+            # Only remove the exact container created by this invocation.
+            if cidfile.is_file():
+                cid = cidfile.read_text().strip()
+                if re.fullmatch(r'[0-9a-f]{64}', cid):
+                    try:
+                        _run(['docker', 'rm', '-f', cid], allowed=(0, 1), timeout=30)
+                    except LocalExecutionError:
+                        print('[gate] container cleanup failed; operations should check {}'.format(cid), flush=True)
+                cidfile.unlink(missing_ok=True)
+            print('[gate] scanner={} finished elapsed={:.2f}s'.format(image_name, time.monotonic() - started), flush=True)
 
     @staticmethod
     def _status(name: str, findings: List[Dict[str, Any]], image: str, detail: str = "") -> Dict[str, Any]:
@@ -122,11 +174,12 @@ class LocalDockerExecutor:
 
     def _gitleaks(self, repo, scope, reports):
         report = reports / 'gitleaks.json'
-        self._docker('gitleaks', repo, reports, [
+        completed = self._docker('gitleaks', repo, reports, [
             'detect', '--source', '/repo', '--redact', '--report-format', 'json',
             '--report-path', '/reports/gitleaks.json', '--log-opts',
             '{}..{}'.format(scope['base'], scope['head']),
         ], allowed=(0, 1))
+        _require_report(report, completed)
         # A missing report is a scanner failure, never a clean scan.
         findings, summary = parse_gitleaks(
             report, source_repo=repo, target_commit=scope['head'],
@@ -142,12 +195,12 @@ class LocalDockerExecutor:
             return [], scanner_status("semgrep", "not-applicable", detail="无适用的 Python/JS/TS 变更；C/C++ 不在 PR 安全扫描范围")
         report = reports / "semgrep.json"
         rules = self.policy_root / "semgrep"
-        self._docker(
+        completed = self._docker(
             "semgrep",
             repo,
             reports,
             [
-                "semgrep", "scan", "--config", "/rules/hygon-security-v1.yml",
+                "semgrep", "scan", "--disable-version-check", "--config", "/rules/hygon-security-v1.yml",
                 "--metrics", "off", "--json", "--output", "/reports/semgrep.json",
                 "--error", *["/repo/{}".format(path) for path in targets],
             ],
@@ -155,6 +208,7 @@ class LocalDockerExecutor:
             environment=[("SEMGREP_SEND_METRICS", "off")],
             allowed=(0, 1),
         )
+        _require_report(report, completed)
         findings, coverage = parse_semgrep(
             report, self.quality["scanners"]["semgrep"]
         )
@@ -193,17 +247,18 @@ class LocalDockerExecutor:
         if not targets:
             return [], scanner_status("ruff", "not-applicable", detail="无 Python 变更")
         report = reports / "ruff.json"
-        self._docker(
+        completed = self._docker(
             "ruff",
             repo,
             reports,
             [
-                "check", "--select", "E9,F63,F7,F82", "--output-format", "json",
+                "check", "--isolated", "--ignore-noqa", "--select", "E9,F63,F7,F82", "--output-format", "json",
                 "--output-file", "/reports/ruff.json", *["/repo/{}".format(path) for path in targets],
             ],
             environment=[("RUFF_CACHE_DIR", "/reports/ruff-cache")],
             allowed=(0, 1),
         )
+        _require_report(report, completed)
         findings = _filter_changed_lines(
             parse_ruff(report, self.quality["scanners"]["ruff"]),
             scope["changed_lines"],
@@ -219,7 +274,7 @@ class LocalDockerExecutor:
         path_file = reports / "changed-paths.txt"
         _write_paths(path_file, paths)
         driver = Path(__file__).resolve().parents[1] / "hygon_quality_security" / "quality_driver.py"
-        self._docker(
+        completed = self._docker(
             "quality_tools",
             repo,
             reports,
@@ -230,6 +285,7 @@ class LocalDockerExecutor:
             mounts=[(driver, "/driver/quality_driver.py", "ro")],
             allowed=(0, 1),
         )
+        _require_report(report, completed)
         errors: List[str] = []
         findings = parse_quality_tools(
             report, changed_lines=scope["changed_lines"], operational_errors=errors,
@@ -255,7 +311,8 @@ class LocalDockerExecutor:
             raise LocalExecutionError("当前检出版本与指定 head 不一致，请先检出要扫描的提交")
         if git(repo, "status", "--porcelain", "--untracked-files=all").stdout.strip():
             raise LocalExecutionError("工作区存在未提交或未跟踪文件，请提交、暂存到 stash 或清理后重扫")
-        paths = [item["path"] for item in scope["changes"] if item["kind"] != "D"]
+        paths = [item["path"] for item in scope["changes"] if item["kind"] != "D"
+                 and mode(repo, scope['head'], item['path']) != '160000']
         findings: List[Dict[str, Any]] = []
         statuses: List[Dict[str, Any]] = []
         with tempfile.TemporaryDirectory(prefix="hygon-pr-gate-") as directory:
