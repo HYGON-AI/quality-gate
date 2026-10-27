@@ -34,6 +34,20 @@ CASES = {
         + ' + '.join('glob.glob("./part%d/*.cu")' % i for i in range(36)) + '\n'}, 0, '本检查通过'),
     'runtime-string-additions': ({'demo.py': HEADER + 'print('
         + ' + '.join(['"am"'] + ['""'] * 35 + ['"d"']) + ')\n'}, 0, 'AMD/XGMI'),
+    'analysis-many-bindings': ({'demo.py': HEADER
+        + ''.join('value_%d = "constant"\n' % i for i in range(1300))
+        + 'if condition: pass\n' * 200}, 0, '本检查通过'),
+    'analysis-candidate-overflow': ({'demo.py': HEADER + 'value = "start"\n'
+        + ''.join('if condition: value = "v%d"\n' % i for i in range(300))}, 1, 'candidates'),
+    'workflow-nested-map': ({'.github/workflows/configs/hcu-test-map.yaml':
+        '{"version": 1, "jobs": {"test": {"isolate_generated_code": true}}}\n'}, 0, '本检查通过'),
+    'workflow-nested-duplicate': ({'.github/workflows/configs/map.yaml':
+        'key: one\nkey: two\n'}, 2, 'YAML 文件存在明确语法错误'),
+    'workflow-nested-invalid': ({'.github/workflows/configs/map.yaml':
+        'key: [broken\n'}, 2, 'YAML 文件存在明确语法错误'),
+    'workflow-direct-invalid': ({'.github/workflows/check.yml':
+        'name: Test\non: push\njobs:\n  check:\n    runs-on: ubuntu-latest\n'
+        '    isolate_generated_code: true\n    steps:\n      - run: echo hello\n'}, 2, 'isolate_generated_code'),
     'header-mit': ({'notice.py': traditional(MIT_NOTICE)}, 0, '本检查通过'),
     'header-bsd': ({'notice.py': traditional(BSD_NOTICE)}, 0, '本检查通过'),
     'header-apache': ({'notice.py': traditional(APACHE_NOTICE)}, 0, '本检查通过'),

@@ -9,14 +9,20 @@ import os
 import re
 import subprocess
 import yaml
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterable, List, Sequence
 
 # The driver is mounted by itself inside the quality-tools container. Keep
 # template classification aligned with the native checker without importing
 # an untrusted target repository module.
+def is_workflow_path(path):
+    target = PurePosixPath(path)
+    return (target.parent == PurePosixPath('.github/workflows')
+            and target.suffix.lower() in {'.yml', '.yaml'})
+
+
 def is_yaml_template(path, text):
-    return (not path.startswith('.github/workflows/')
+    return (not is_workflow_path(path)
             and 'templates' in Path(path).parts
             and bool(re.search(r'{{-?\s*(?:\.|if\b|range\b|include\b|with\b|end\b)', text)))
 
@@ -107,13 +113,9 @@ def scan_actionlint(repo: Path, paths: List[str]) -> List[Dict[str, Any]]:
     workflow_root = repo / ".github" / "workflows"
     if not workflow_root.is_dir():
         return []
-    requested = set(paths)
     workflow_paths = sorted(
-        str(path.relative_to(repo))
-        for path in workflow_root.rglob("*")
-        if path.is_file()
-        and path.suffix.lower() in {".yaml", ".yml"}
-        and str(path.relative_to(repo)) in requested
+        path for path in set(paths)
+        if is_workflow_path(path) and (repo / path).is_file()
     )
     output_lines = []
     for workflow_path in workflow_paths:

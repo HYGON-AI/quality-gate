@@ -6,7 +6,12 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.9`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.10`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.10 reuses unchanged bounded branch values to improve analysis scaling,
+and checks only direct `.github/workflows/` YAML files as executable workflows.
+Nested configuration YAML remains validated. Resource limits and genuine
+workflow checks stay enabled. See [release notes](docs/releases/v2.0.10.md).
 
 v2.0.9 fixes expression-depth failures on long addition chains such as lightop's
 build-source lists. String detection, incremental origins and resource limits

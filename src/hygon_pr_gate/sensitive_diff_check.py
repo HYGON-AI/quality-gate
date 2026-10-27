@@ -451,8 +451,18 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         return [(key[1], origins) for key, origins in unique.items()]
 
     def _merge(self, left, right):
-        return {key: self._bounded(itertools.chain(left.get(key, ()), right.get(key, ())))
-                for key in left.keys() | right.keys()}
+        merged = {}
+        for key in left.keys() | right.keys():
+            self._budget()
+            positive = left.get(key, ())
+            negative = right.get(key, ())
+            # Branch snapshots are shallow copies and candidate lists are
+            # replaced, never mutated. An identical list already contains the
+            # same bounded typed values and origins on both paths. Rebuilding
+            # it at every join makes large unchanged environments quadratic.
+            merged[key] = (positive if positive is negative else
+                           self._bounded(itertools.chain(positive, negative)))
+        return merged
 
     def _join(self, left, right):
         if len(left) + len(right) > self.MAX_STRING:
