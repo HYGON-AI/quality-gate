@@ -5,7 +5,11 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 
 [English documentation](README.en.md)
 
-本文描述 `v2.0.9`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+本文描述 `v2.0.10`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+
+v2.0.10 避免对分支中未变化的候选值重复合并，改善大型 Python 参数文件的分析效率；
+仅将 `.github/workflows/` 直属 YAML 文件按工作流检查，子目录配置继续做普通 YAML 检查。
+资源上限和真实工作流检查保持启用。见 [发布说明](docs/releases/v2.0.10.md)。
 
 v2.0.9 修复长链加法表达式触发敏感字段分析深度上限的问题，覆盖 lightop 构建脚本场景；
 保留字符串拼接检测、增量来源和资源保护。见 [发布说明](docs/releases/v2.0.9.md)。
