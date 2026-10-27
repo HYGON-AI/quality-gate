@@ -466,6 +466,45 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
             self.visit(node)
         self.context = previous
 
+    def _addition_values(self, node, depth):
+        """Evaluate long addition trees without consuming Python call depth.
+
+        Frames retain the original grouping and left-to-right evaluation. An
+        unknown left operand still short-circuits value inference; normal AST
+        traversal separately inspects any visible calls in either operand.
+        """
+        stack = [(node, 0, None)]
+        values = []
+        while stack:
+            self._budget()
+            current, phase, left_values = stack.pop()
+            if phase == 0:
+                if isinstance(current, ast.BinOp) and isinstance(current.op, ast.Add):
+                    stack.append((current, 1, None))
+                    stack.append((current.left, 0, None))
+                else:
+                    # Addition length is structural; nested format/f-string
+                    # expressions still consume the existing depth budget.
+                    values = self._values(current, depth + 1)
+            elif phase == 1:
+                if values:
+                    stack.append((current, 2, values))
+                    stack.append((current.right, 0, None))
+            else:
+                result = []
+                for left, left_origins in left_values:
+                    for right, right_origins in values:
+                        if type(left) == type(right) and isinstance(left, (str, int, float)):
+                            self._budget()
+                            result.append((
+                                self._join(left, right) if isinstance(left, str) else left + right,
+                                left_origins | right_origins,
+                            ))
+                            if len(result) > self.MAX_VALUES:
+                                result = self._bounded(result)
+                values = self._bounded(result)
+        return values
+
     def _values(self, node, depth=0):
         """Evaluate a bounded subset of expressions without running target code."""
         self._budget()
@@ -477,15 +516,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         if isinstance(node, ast.Name):
             return self.values.get(node.id, [])
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            result = []
-            for left, ls in self._values(node.left, depth + 1):
-                for right, rs in self._values(node.right, depth + 1):
-                    if type(left) == type(right) and isinstance(left, (str, int, float)):
-                        self._budget()
-                        result.append((self._join(left, right) if isinstance(left, str) else left + right, ls | rs))
-                        if len(result) > self.MAX_VALUES:
-                            result = self._bounded(result)
-            return self._bounded(result)
+            return self._addition_values(node, depth)
         if isinstance(node, ast.JoinedStr):
             result = [('', frozenset())]
             for part in node.values:
@@ -619,6 +650,21 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         self.values = previous
 
     visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        if not isinstance(node.op, ast.Add):
+            self.generic_visit(node)
+            return
+        # Value inference alone is insufficient: generic_visit would recurse
+        # into the same long addition chain again when looking for calls.
+        stack = [node.right, node.left]
+        while stack:
+            child = stack.pop()
+            if isinstance(child, ast.BinOp) and isinstance(child.op, ast.Add):
+                self._budget()
+                stack.extend((child.right, child.left))
+            else:
+                self.visit(child)
 
     def visit_Call(self, node: ast.Call) -> None:
         name = _call_name(node).lower()

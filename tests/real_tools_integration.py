@@ -30,6 +30,10 @@ CASES = {
     'ruff-attribute-bypass': ({'demo.py': HEADER + 'value = 0\ndef f():\n    print(value)\n    value = 1\n',
         '.gitattributes': '*.py -diff\n'}, 2, 'F823'),
     'native-branches': ({'demo.py': HEADER + 'flag = True\n' + 'if condition: pass\n' * 500}, 0, '本检查通过'),
+    'runtime-list-additions': ({'demo.py': HEADER + 'import glob\nfiles = '
+        + ' + '.join('glob.glob("./part%d/*.cu")' % i for i in range(36)) + '\n'}, 0, '本检查通过'),
+    'runtime-string-additions': ({'demo.py': HEADER + 'print('
+        + ' + '.join(['"am"'] + ['""'] * 35 + ['"d"']) + ')\n'}, 0, 'AMD/XGMI'),
     'header-mit': ({'notice.py': traditional(MIT_NOTICE)}, 0, '本检查通过'),
     'header-bsd': ({'notice.py': traditional(BSD_NOTICE)}, 0, '本检查通过'),
     'header-apache': ({'notice.py': traditional(APACHE_NOTICE)}, 0, '本检查通过'),

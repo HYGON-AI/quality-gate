@@ -6,7 +6,11 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.8`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.9`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.9 fixes expression-depth failures on long addition chains such as lightop's
+build-source lists. String detection, incremental origins and resource limits
+remain enforced. See [release notes](docs/releases/v2.0.9.md).
 
 v2.0.8 fixes unbounded Python branch analysis, gitlink handling and caller-config
 bypasses, improves operational diagnostics, and admits approved OpenMDW-1.1 SPDX
@@ -24,7 +28,7 @@ tool failures and missing reports from retained scanners still fail the gate.
 2. Update `pull_request.branches` for the target repository.
 3. Replace `QUALITY_GATE_REF` with a reviewed release tag or full Commit SHA.
 
-The following example uses the current stable release
+The following example uses the fixed release
 [`v2.0.8`](https://github.com/HYGON-AI/quality-gate/releases/tag/v2.0.8):
 
 ```yaml
