@@ -7,10 +7,16 @@ from pathlib import PurePosixPath
 import yaml
 
 
+def is_workflow_path(path):
+    target = PurePosixPath(path)
+    return (target.parent == PurePosixPath('.github/workflows')
+            and target.suffix.lower() in {'.yml', '.yaml'})
+
+
 def is_template(path, text):
     # Do not exempt Actions expressions (${{ ... }}) or ordinary YAML merely
     # because it contains braces. Only recognize template source locations.
-    return (not path.startswith('.github/workflows/')
+    return (not is_workflow_path(path)
             and 'templates' in PurePosixPath(path).parts
             and bool(re.search(r'{{-?\s*(?:\.|if\b|range\b|include\b|with\b|end\b)', text)))
 

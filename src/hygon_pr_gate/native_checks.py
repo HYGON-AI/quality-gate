@@ -17,7 +17,7 @@ from hygon_quality_security.models import finding, scanner_status
 
 from .git_scope import blob_size, mode, read_blob
 from .artifacts import compiled_format
-from .yaml_checks import validate_yaml, is_template, comment_only_change
+from .yaml_checks import validate_yaml, is_template, is_workflow_path, comment_only_change
 from .header_notices import (comment_header, declarations, contains_declaration,
                              traditional_notices, preserves_traditional)
 
@@ -370,7 +370,7 @@ def scan_syntax_and_workflows(
                     level='advisory'))
                 continue
             try:
-                validate_yaml(text, workflow=path.startswith('.github/workflows/'))
+                validate_yaml(text, workflow=is_workflow_path(path))
             except yaml.YAMLError as error:
                 mark = getattr(error, "problem_mark", None)
                 findings.append(
@@ -385,7 +385,7 @@ def scan_syntax_and_workflows(
                         line=(mark.line + 1) if mark is not None else None,
                     )
                 )
-        if path.startswith(".github/workflows/") and suffix in {".yaml", ".yml"}:
+        if is_workflow_path(path):
             for line_number, line in enumerate(text.splitlines(), 1):
                 if change["kind"] not in {"A", "C"} and line_number not in scope["changed_lines"].get(path, set()):
                     continue
