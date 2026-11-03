@@ -3,6 +3,7 @@
 self-hosted-runner:
   labels:
     - quality
+    - k8s
 paths:
   .github/workflows/pr-quality-gate.yml:
     ignore:
