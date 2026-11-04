@@ -1,146 +1,18 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
-name: K8s Volcano Smoke
-
+# Experimental branch only: reuse the already registered manual workflow entry.
+name: K8s Volcano Validation Pilot
 on:
-  push:
-    branches: [feat/k8s-volcano-smoke]
   workflow_dispatch:
     inputs:
-      hcu_cards:
-        description: Number of HCU devices for the smoke test
+      mode:
         type: choice
-        options: ['0', '2', '4', '8']
-        default: '2'
-      node:
-        description: Target node; nmz6 has independent device-mapped containers
-        type: choice
-        options: [github-nmz3, github-nmz4]
-        default: github-nmz3
-
+        default: success
+        options: [success, failure, runtime-timeout, cancel, github-timeout]
 permissions:
   contents: read
-
 jobs:
-  smoke:
-    runs-on: [self-hosted, linux, x64, k8s]
-    timeout-minutes: 10
-    env:
-      KUBECONFIG: /home/github/.kube-ci/config
-      HCU_CARDS: ${{ inputs.hcu_cards || '2' }}
-      TARGET_NODE: ${{ inputs.node || 'github-nmz3' }}
-      JOB_NAME: ci-volcano-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-      HCU_IMAGE: 42.228.13.241:5000/dcu/admin/base/pytorch:2.7.1-ubuntu22.04-dtk26.04-py3.10
-    steps:
-      - name: Check runner and Kubernetes access
-        shell: bash
-        run: |
-          set -euo pipefail
-          hostname
-          test -r "$KUBECONFIG"
-          kubectl get nodes -o wide
-          kubectl -n github-ci get jobs.batch.volcano.sh
-
-      - name: Submit Volcano smoke job
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/$JOB_NAME"
-          python3 - <<'PY' > "$RUNNER_TEMP/$JOB_NAME/job.json"
-          import json
-          import os
-
-          cards = int(os.environ['HCU_CARDS'])
-          source = '''import json, torch
-          count = torch.cuda.device_count()
-          print(json.dumps({"torch": torch.__version__, "hip": torch.version.hip,
-                            "device_count": count}), flush=True)
-          assert count == EXPECTED_CARDS, "unexpected visible device count"
-          for index in range(count):
-              value = torch.ones(1024, device="cuda:" + str(index))
-              assert value.sum().item() == 1024
-              torch.cuda.synchronize(index)
-              print(json.dumps({"device": index,
-                                "name": torch.cuda.get_device_name(index),
-                                "operation": "passed"}), flush=True)
-          print("SMOKE_PASSED", flush=True)
-          '''.replace('EXPECTED_CARDS', str(cards))
-          if cards == 0:
-              # Direct torch import fails in this image when no HCU is requested.
-              source = '''import glob, json, os
-          devices = glob.glob("/dev/dri/renderD*")
-          print(json.dumps({"render_devices": devices,
-                            "kfd_present": os.path.exists("/dev/kfd")}), flush=True)
-          assert not devices and not os.path.exists("/dev/kfd")
-          print("SMOKE_PASSED", flush=True)
-          '''
-          resources = {'requests': {'cpu': '1', 'memory': '2Gi'},
-                       'limits': {'cpu': '2', 'memory': '4Gi'}}
-          if cards:
-              resources['requests']['hygon.com/hcu'] = cards
-              resources['limits']['hygon.com/hcu'] = cards
-          job = {
-              'apiVersion': 'batch.volcano.sh/v1alpha1',
-              'kind': 'Job',
-              'metadata': {'name': os.environ['JOB_NAME'], 'namespace': 'github-ci',
-                           'labels': {'app.kubernetes.io/managed-by': 'github-actions'}},
-              'spec': {
-                  'minAvailable': 1, 'schedulerName': 'volcano', 'queue': 'default',
-                  'maxRetry': 0, 'ttlSecondsAfterFinished': 300,
-                  'policies': [{'event': 'TaskCompleted', 'action': 'CompleteJob'},
-                               {'event': 'PodFailed', 'action': 'TerminateJob'}],
-                  'tasks': [{'name': 'main', 'replicas': 1, 'template': {'spec': {
-                      'restartPolicy': 'Never', 'activeDeadlineSeconds': 300,
-                      'automountServiceAccountToken': False,
-                      'nodeSelector': {'kubernetes.io/hostname': os.environ['TARGET_NODE']},
-                      'containers': [{'name': 'smoke', 'image': os.environ['HCU_IMAGE'],
-                                      'imagePullPolicy': 'IfNotPresent',
-                                      'command': ['python', '-u', '-c', source],
-                                      'resources': resources}]}}}]}}
-          print(json.dumps(job))
-          PY
-          kubectl create --dry-run=server -f "$RUNNER_TEMP/$JOB_NAME/job.json"
-          kubectl create -f "$RUNNER_TEMP/$JOB_NAME/job.json"
-
-      - name: Wait for test result
-        shell: bash
-        run: |
-          set -euo pipefail
-          for ((attempt = 0; attempt < 180; attempt++)); do
-            phase=$(kubectl -n github-ci get jobs.batch.volcano.sh "$JOB_NAME" \
-              -o jsonpath='{.status.state.phase}')
-            printf 'Volcano job %s: %s\n' "$JOB_NAME" "${phase:-Pending}"
-            case "$phase" in
-              Completed) exit 0 ;;
-              Failed|Terminated|Aborted)
-                echo "::error::Volcano smoke job ended in $phase"
-                exit 1
-                ;;
-            esac
-            sleep 2
-          done
-          echo '::error::Volcano smoke job did not finish within six minutes'
-          exit 1
-
-      - name: Collect status and logs
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          mkdir -p "$RUNNER_TEMP/$JOB_NAME"
-          kubectl -n github-ci get jobs.batch.volcano.sh "$JOB_NAME" -o yaml \
-            > "$RUNNER_TEMP/$JOB_NAME/status.yaml" 2>&1
-          cat "$RUNNER_TEMP/$JOB_NAME/status.yaml"
-          kubectl -n github-ci get pods -l "volcano.sh/job-name=$JOB_NAME" -o wide
-          for pod in $(kubectl -n github-ci get pods \
-            -l "volcano.sh/job-name=$JOB_NAME" -o jsonpath='{.items[*].metadata.name}'); do
-            kubectl -n github-ci describe pod "$pod"
-            kubectl -n github-ci logs "$pod" > "$RUNNER_TEMP/$JOB_NAME/$pod.log" 2>&1
-            cat "$RUNNER_TEMP/$JOB_NAME/$pod.log"
-          done
-
-      - name: Clean up this test job
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          kubectl -n github-ci delete jobs.batch.volcano.sh "$JOB_NAME" \
-            --ignore-not-found=true --wait=false
+  experiment:
+    uses: ./.github/workflows/k8s-ci-validation.yml
+    with:
+      mode: ${{ inputs.mode }}

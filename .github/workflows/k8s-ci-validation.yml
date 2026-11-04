@@ -1,0 +1,83 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: K8s CI Validation
+on:
+  workflow_call:
+    inputs:
+      mode:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: success
+        options: [success, failure, runtime-timeout, cancel, github-timeout]
+permissions:
+  contents: read
+concurrency:
+  group: nmz3-k8s-validation
+  cancel-in-progress: false
+jobs:
+  validation:
+    runs-on:
+      group: ci-k8s
+      labels: [self-hosted, linux, x64, k8s]
+    timeout-minutes: ${{ inputs.mode == 'github-timeout' && 2 || 10 }}
+    env:
+      KUBECONFIG: /home/github/.kube-ci/config
+      TEST_MODE: ${{ inputs.mode }}
+      TEST_DIR: ${{ runner.temp }}/k8s-validation-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          persist-credentials: false
+      - name: Validate trusted context and exclusive window
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = HYGON-AI/quality-gate
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$(hostname)" = github-nmz3
+          test -r "$KUBECONFIG"
+          python3 - <<'PY'
+          import pathlib, subprocess, json
+          for path in pathlib.Path('/proc').glob('[0-9]*/comm'):
+              try:
+                  if path.read_text().strip() == 'Runner.Listener':
+                      cwd = (path.parent / 'cwd').resolve()
+                      assert str(cwd) == '/home/github/actions-runner-k8s-01', 'Another runner listener active'
+              except (FileNotFoundError, PermissionError):
+                  pass
+          memory = dict(line.split(':', 1) for line in pathlib.Path('/proc/meminfo').read_text().splitlines())
+          assert int(memory['MemAvailable'].split()[0]) >= 64 * 1024 * 1024
+          result = subprocess.check_output(['kubectl', '--request-timeout=8s', '-n', 'github-ci', 'get', 'pods', '-o', 'json'])
+          pods = json.loads(result)['items']
+          assert not [p for p in pods if p.get('status', {}).get('phase') not in ('Succeeded', 'Failed')], 'Existing namespace workload; stop for review'
+          ids = subprocess.check_output(['docker', 'ps', '-q']).decode().split()
+          for ident in ids:
+              container = json.loads(subprocess.check_output(['docker', 'inspect', ident]))[0]
+              if not container['Name'].startswith('/k8s_'):
+                  host = container['HostConfig']
+                  assert not (host.get('Privileged') or host.get('Devices') or host.get('DeviceRequests')
+                              or any('/dev' in mount for mount in host.get('Binds') or [])), 'Non-K8s device container is active'
+          image = '42.228.13.241:5000/dcu/admin/base/pytorch@sha256:07c285c51837d76fbcc73b771b1a95ecf2d8b71203e5feadb3cb9cb12b5d3f4d'
+          subprocess.run(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'], check=True)
+          print('PRECHECK_PASSED')
+          PY
+      - name: Execute bounded test
+        shell: bash
+        run: exec python3 scripts/k8s-ci-validation.py run --mode "$TEST_MODE" --directory "$TEST_DIR"
+      - name: Reclaim only this run and verify no residual resources
+        if: ${{ always() }}
+        timeout-minutes: 2
+        shell: bash
+        run: python3 scripts/k8s-ci-validation.py cleanup --directory "$TEST_DIR"
+      - name: Preserve test evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: k8s-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.TEST_DIR }}/state.json
+          if-no-files-found: warn
+          retention-days: 14
