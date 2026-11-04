@@ -151,6 +151,16 @@ def resource_wait_evidence(events):
                for e in events)
 
 
+def container_time(value):
+    # Kubelet RFC3339 UTC timestamps; keep the dispatcher compatible with Python 3.6.
+    for pattern in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
+        try:
+            return datetime.datetime.strptime(value, pattern)
+        except ValueError:
+            pass
+    raise ValueError("Unsupported container timestamp")
+
+
 class Experiment:
     def __init__(self, directory, mode, resume=False):
         self.directory = pathlib.Path(directory)
@@ -270,8 +280,8 @@ class Experiment:
             raise RuntimeError("One or more concurrent computations failed")
         # Compare container lifecycle timestamps from this one node only.
         intervals = [result[1][0]["status"]["containerStatuses"][0]["state"]["terminated"] for result in results]
-        start = max(datetime.datetime.fromisoformat(t["startedAt"].replace("Z", "+00:00")) for t in intervals)
-        end = min(datetime.datetime.fromisoformat(t["finishedAt"].replace("Z", "+00:00")) for t in intervals)
+        start = max(container_time(t["startedAt"]) for t in intervals)
+        end = min(container_time(t["finishedAt"]) for t in intervals)
         seconds = (end - start).total_seconds()
         if seconds <= 0:
             raise RuntimeError("Container lifetimes did not overlap")
@@ -313,8 +323,8 @@ class Experiment:
             raise RuntimeError("Queue computations did not both finish successfully")
         device_ids(results[1][2], 1)
         intervals = [result[1][0]["status"]["containerStatuses"][0]["state"]["terminated"] for result in results]
-        first_end = datetime.datetime.fromisoformat(intervals[0]["finishedAt"].replace("Z", "+00:00"))
-        next_start = datetime.datetime.fromisoformat(intervals[1]["startedAt"].replace("Z", "+00:00"))
+        first_end = container_time(intervals[0]["finishedAt"])
+        next_start = container_time(intervals[1]["startedAt"])
         gap = (next_start - first_end).total_seconds()
         if gap < 0:
             raise RuntimeError("Queued container started before full-node container ended")

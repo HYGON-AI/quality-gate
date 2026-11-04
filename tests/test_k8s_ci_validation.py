@@ -98,6 +98,13 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(v.resource_wait_evidence([{"reason": "Failed", "message": "ImagePullBackOff"}]))
         self.assertFalse(v.resource_wait_evidence([{"reason": "Scheduled", "message": "Pod assigned"}]))
 
+    def test_container_time_on_legacy_dispatch_python(self):
+        a = v.container_time("2026-11-04T08:00:00Z")
+        b = v.container_time("2026-11-04T08:00:01.500Z")
+        self.assertEqual((b-a).total_seconds(), 1.5)
+        with self.assertRaises(ValueError):
+            v.container_time("not-a-time")
+
 
 if __name__ == "__main__":
     unittest.main()
