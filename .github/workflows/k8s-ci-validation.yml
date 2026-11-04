@@ -27,7 +27,6 @@ jobs:
     env:
       KUBECONFIG: /home/github/.kube-ci/config
       TEST_MODE: ${{ inputs.mode }}
-      TEST_DIR: ${{ runner.temp }}/k8s-validation-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
@@ -36,6 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "TEST_DIR=$RUNNER_TEMP/k8s-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
           test "$GITHUB_REPOSITORY" = HYGON-AI/quality-gate
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$(hostname)" = github-nmz3
