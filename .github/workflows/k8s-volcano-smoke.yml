@@ -8,7 +8,7 @@ on:
       mode:
         type: choice
         default: success
-        options: [success, failure, runtime-timeout, cancel, github-timeout]
+        options: [success, failure, runtime-timeout, cancel, github-timeout, concurrent, queue]
 permissions:
   contents: read
 jobs:

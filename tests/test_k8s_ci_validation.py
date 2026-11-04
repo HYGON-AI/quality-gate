@@ -73,6 +73,31 @@ class ValidationTests(unittest.TestCase):
     def test_secrets_redacted(self):
         self.assertNotIn("abcdef", v.sanitize("Bearer abcdef github_pat_abcdef"))
 
+    def test_parallel_requires_running_and_distinct_uuid(self):
+        pod = [{"status": {"phase": "Running"}}]
+        a = 'DEVICE_REPORT={"count":1,"devices":[{"uuid":"a"}]}\nCOMPUTE_READY'
+        b = a.replace('"a"', '"b"')
+        self.assertTrue(v.isolated_pair([("Running", pod, a), ("Running", pod, b)]))
+        self.assertFalse(v.isolated_pair([("Running", pod, a), ("Running", pod, a)]))
+        self.assertFalse(v.isolated_pair([("Completed", pod, a), ("Running", pod, b)]))
+        self.assertFalse(v.isolated_pair([("Running", [], a), ("Running", pod, b)]))
+
+    def test_device_evidence_must_be_complete(self):
+        for logs in ('', 'DEVICE_REPORT={"count":2,"devices":[{"uuid":"a"}]}',
+                     'DEVICE_REPORT={"count":2,"devices":[{"uuid":"a"},{"uuid":"a"}]}'):
+            with self.assertRaises(RuntimeError):
+                v.device_ids(logs, 2)
+
+    def test_cancellation_raises_not_success(self):
+        with self.assertRaises(KeyboardInterrupt):
+            v.interrupted(2, None)
+
+    def test_queue_requires_scheduler_resource_reason(self):
+        self.assertTrue(v.resource_wait_evidence([{"reason": "FailedScheduling", "message": "Insufficient hygon.com/hcu"}]))
+        self.assertFalse(v.resource_wait_evidence([]))
+        self.assertFalse(v.resource_wait_evidence([{"reason": "Failed", "message": "ImagePullBackOff"}]))
+        self.assertFalse(v.resource_wait_evidence([{"reason": "Scheduled", "message": "Pod assigned"}]))
+
 
 if __name__ == "__main__":
     unittest.main()

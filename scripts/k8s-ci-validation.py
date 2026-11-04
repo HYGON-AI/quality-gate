@@ -126,6 +126,31 @@ def verdict(phase, pods, logs):
             and exits == [0] and "COMPUTE_PASSED" in logs)
 
 
+def device_ids(logs, expected):
+    lines = [line.split("=", 1)[1] for line in logs.splitlines() if line.startswith("DEVICE_REPORT=")]
+    if len(lines) != 1:
+        raise RuntimeError("Missing or ambiguous device report")
+    report = json.loads(lines[0])
+    ids = [device["uuid"] for device in report["devices"]]
+    if report["count"] != expected or len(ids) != expected or len(set(ids)) != expected:
+        raise RuntimeError("Device count/identity mismatch")
+    return ids
+
+
+def isolated_pair(results):
+    if len(results) != 2 or any(phase != "Running" or len(pods) != 1
+                                or pods[0].get("status", {}).get("phase") != "Running"
+                                or "COMPUTE_READY" not in logs for phase, pods, logs in results):
+        return False
+    return device_ids(results[0][2], 1)[0] != device_ids(results[1][2], 1)[0]
+
+
+def resource_wait_evidence(events):
+    return any(e.get("reason", "") in ("FailedScheduling", "Unschedulable", "NotEnoughResources")
+               and any(word in e.get("message", "").lower() for word in ("resource", "hcu", "insufficient", "unschedulable"))
+               for e in events)
+
+
 class Experiment:
     def __init__(self, directory, mode, resume=False):
         self.directory = pathlib.Path(directory)
@@ -213,6 +238,90 @@ class Experiment:
             time.sleep(2)
         raise TimeoutError("Controller wait deadline exceeded")
 
+    def wait_ready(self, record, timeout=90):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            phase, pods, logs = self.snapshot(record)
+            if phase == "Running" and len(pods) == 1 and "COMPUTE_READY" in logs:
+                self.event("ready: " + record["name"] + "\n" + logs)
+                return
+            if phase in TERMINAL:
+                raise RuntimeError("Task ended before ready observation")
+            time.sleep(2)
+        raise TimeoutError("Ready deadline exceeded")
+
+    def concurrent(self):
+        records = [self.submit("parallel-" + str(i), 1, "concurrent", hold=45) for i in range(2)]
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
+            results = [self.snapshot(record) for record in records]
+            if isolated_pair(results):
+                self.state["overlap"] = {"observed_at": stamp(),
+                                         "device_ids": [device_ids(result[2], 1)[0] for result in results]}
+                self.event("Concurrent Running observed on distinct single devices")
+                break
+            if any(result[0] in TERMINAL for result in results):
+                raise RuntimeError("No verified concurrent isolation before task completion")
+            time.sleep(2)
+        else:
+            raise TimeoutError("Concurrent observation timed out")
+        results = self.wait(records)
+        if not all(verdict(*result) for result in results):
+            raise RuntimeError("One or more concurrent computations failed")
+        # Compare container lifecycle timestamps from this one node only.
+        intervals = [result[1][0]["status"]["containerStatuses"][0]["state"]["terminated"] for result in results]
+        start = max(datetime.datetime.fromisoformat(t["startedAt"].replace("Z", "+00:00")) for t in intervals)
+        end = min(datetime.datetime.fromisoformat(t["finishedAt"].replace("Z", "+00:00")) for t in intervals)
+        seconds = (end - start).total_seconds()
+        if seconds <= 0:
+            raise RuntimeError("Container lifetimes did not overlap")
+        self.state["overlap"]["seconds"] = seconds
+        self.state["success"] = True
+        self.event("Concurrent isolation passed; overlap seconds=" + str(seconds))
+
+    def queue(self):
+        first = self.submit("full-node", 8, "queue", hold=75)
+        self.wait_ready(first)
+        device_ids(first["logs"], 8)
+        second = self.submit("waiting", 1, "queue")
+        started = time.monotonic()
+        evidence = []
+        pending_observed = False
+        deadline = started + 100
+        while time.monotonic() < deadline:
+            a = self.snapshot(first)
+            b = self.snapshot(second)
+            if a[0] != "Running" or "COMPUTE_READY" not in a[2]:
+                break
+            if b[0] == "Running" or "COMPUTE_READY" in b[2]:
+                raise RuntimeError("Single-card job ran while full-node job still occupied 8 cards")
+            events = read("events")["items"]
+            evidence = [{"reason": e.get("reason"), "message": sanitize(e.get("message", "")),
+                         "object": e.get("involvedObject", {}).get("name")}
+                        for e in events if second["name"] in e.get("involvedObject", {}).get("name", "")]
+            if time.monotonic() - started >= 5 and resource_wait_evidence(evidence):
+                pending_observed = True
+                self.state["queue_evidence"] = {"time": stamp(), "seconds": time.monotonic() - started,
+                                                "waiting_phase": b[0], "events": evidence}
+                self.event("Waiting job observed while 8-card task runs; scheduler evidence saved")
+                break
+            time.sleep(2)
+        if not pending_observed:
+            raise RuntimeError("No scheduler-backed pending observation")
+        results = self.wait([first, second])
+        if not all(verdict(*result) for result in results):
+            raise RuntimeError("Queue computations did not both finish successfully")
+        device_ids(results[1][2], 1)
+        intervals = [result[1][0]["status"]["containerStatuses"][0]["state"]["terminated"] for result in results]
+        first_end = datetime.datetime.fromisoformat(intervals[0]["finishedAt"].replace("Z", "+00:00"))
+        next_start = datetime.datetime.fromisoformat(intervals[1]["startedAt"].replace("Z", "+00:00"))
+        gap = (next_start - first_end).total_seconds()
+        if gap < 0:
+            raise RuntimeError("Queued container started before full-node container ended")
+        self.state["queue_evidence"]["start_after_release_seconds"] = gap
+        self.state["success"] = True
+        self.event("Queue handover passed; second start after first finish seconds=" + str(gap))
+
     def cleanup(self):
         self.event("cleanup started")
         errors = []
@@ -236,9 +345,10 @@ class Experiment:
 
     def execute(self):
         mode = self.state["mode"]
-        if mode in ("concurrent", "queue"):
-            # These require their own observation logic; don't silently treat sequential runs as concurrency.
-            raise RuntimeError("Concurrent/queue phase is not enabled until lifecycle acceptance")
+        if mode == "concurrent":
+            return self.concurrent()
+        if mode == "queue":
+            return self.queue()
         hold = 180 if mode in ("cancel", "runtime-timeout", "github-timeout") else 0
         record = self.submit(mode, 2 if mode == "success" else 1, mode, hold)
         phase, pods, logs = self.wait([record])[0]
