@@ -1,0 +1,65 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: ARC bounded queue and artifact validation
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-platform-efficiency.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-platform-efficiency-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  produce:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    steps:
+      - name: Produce synthetic bounded payload
+        shell: bash
+        env:
+          TASK_ID: ${{ matrix.task }}
+        run: |
+          set -euo pipefail
+          test ! -e /tmp/arc-platform-20261106-marker
+          test ! -e /var/run/secrets/kubernetes.io/serviceaccount/token
+          mkdir -p payload
+          printf 'task=%s\nrun=%s\nrunner=%s\n' "$TASK_ID" "$GITHUB_RUN_ID" "$RUNNER_NAME" > payload/result.txt
+          (cd payload && sha256sum result.txt > SHA256SUMS)
+          printf 'START task=%s runner=%s utc=%s\n' "$TASK_ID" "$RUNNER_NAME" "$(date -u +%FT%TZ)"
+          sleep "$((5 + TASK_ID % 3 * 10))"
+          printf 'END task=%s utc=%s\n' "$TASK_ID" "$(date -u +%FT%TZ)"
+      - name: Upload synthetic result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-synthetic-${{ matrix.task }}
+          path: payload/
+          if-no-files-found: error
+          retention-days: 1
+  consume:
+    needs: produce
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 5
+    steps:
+      - name: Download results on a separate ephemeral runner
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: arc-synthetic-*
+          path: received
+      - name: Verify all twelve payloads and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e /tmp/arc-platform-20261106-marker
+          for task in $(seq 1 12); do
+            (cd "received/arc-synthetic-$task" && sha256sum -c SHA256SUMS)
+            grep -Fx "task=$task" "received/arc-synthetic-$task/result.txt"
+            grep -Fx "run=$GITHUB_RUN_ID" "received/arc-synthetic-$task/result.txt"
+          done
+          echo 'ARTIFACT_ROUNDTRIP_PASS: 12 payloads verified'
