@@ -12,6 +12,6 @@ jobs:
   suite:
     uses: HYGON-AI/quality-gate/.github/workflows/arc-hcu-soak.yml@a4dc37d37557360442b63f46ab43c163857bbe4c
     with:
-      case: hcu2
+      case: hcu4
     permissions:
       contents: read
