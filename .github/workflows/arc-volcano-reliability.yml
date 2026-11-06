@@ -1,0 +1,35 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: Trusted ARC Volcano CPU reliability
+on:
+  workflow_call:
+    inputs:
+      mode:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: ${{ inputs.mode == 'github-timeout' && 1 || 8 }}
+    steps:
+      - name: Checkout immutable trusted test code
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 802d387469835ef63b8131039fb207cfca9bbdaf
+          persist-credentials: false
+      - name: Bounded CPU reliability probe
+        env:
+          PROBE_MODE: ${{ inputs.mode }}
+        run: python3 scripts/arc-volcano-reliability.py "$PROBE_MODE"
+      - name: Preserve sanitized reliability evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-reliability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-reliability-evidence
+          if-no-files-found: error
+          retention-days: 7
