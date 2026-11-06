@@ -1,0 +1,36 @@
+name: Trusted nonroot HCU image validation
+on:
+  workflow_call:
+    inputs:
+      case:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  account:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && contains(fromJSON('["cpu","hcu1","hcu2"]'), inputs.case)
+    name: Nonroot account image (${{ inputs.case }})
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 0eae008457a558e24e39f7469d59dff4d43fa94d
+          persist-credentials: false
+      - name: Build and compute with real nonroot user
+        env:
+          CI_CASE: ${{ inputs.case }}
+        run: exec python3 scripts/arc-account.py "$CI_CASE"
+      - name: Independently verify owned compute cleanup
+        if: always()
+        run: exec python3 scripts/arc-account.py cleanup-only
+      - name: Upload image identity and test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-account-${{ inputs.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-ci-e2e
+          if-no-files-found: error
+          retention-days: 7
