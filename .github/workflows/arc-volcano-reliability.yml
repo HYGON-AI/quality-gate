@@ -19,12 +19,15 @@ jobs:
         uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: HYGON-AI/quality-gate
-          ref: 802d387469835ef63b8131039fb207cfca9bbdaf
+          ref: dcfd23ff496d00fec682efe038cca39d7edf09b3
           persist-credentials: false
       - name: Bounded CPU reliability probe
         env:
           PROBE_MODE: ${{ inputs.mode }}
-        run: python3 scripts/arc-volcano-reliability.py "$PROBE_MODE"
+        run: exec python3 scripts/arc-volcano-reliability.py "$PROBE_MODE"
+      - name: Independently verify owned compute cleanup
+        if: always()
+        run: exec python3 scripts/arc-volcano-reliability.py cleanup-only
       - name: Preserve sanitized reliability evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
