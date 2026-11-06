@@ -21,7 +21,7 @@ def kube(*args, data=None, check=True):
     env = os.environ.copy()
     env.pop("KUBECONFIG", None)
     p = subprocess.run(
-        ["kubectl", "--request-timeout=15s", "-n", NS] + list(args),
+        ["kubectl", "--kubeconfig=/opt/hygon/kube-incluster.yaml", "--request-timeout=15s", "-n", NS] + list(args),
         input=None if data is None else json.dumps(data),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         timeout=25, env=env,
@@ -151,6 +151,7 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     output = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "arc-volcano-evidence"
     output.mkdir(parents=True, exist_ok=True)
+    (output / "started.json").write_text(json.dumps({"namespace": NS, "mode": "fixed-cpu-pilot"}), encoding="utf-8")
     for verb, resource, namespace, expected in [
         ("create", RESOURCE, NS, True), ("get", "pods", NS, True),
         ("get", "secrets", NS, False), ("create", "pods", NS, False),
@@ -159,6 +160,7 @@ def main():
     ]:
         p = kube("auth", "can-i", verb, resource, "--namespace=" + namespace, check=False)
         if p.stdout.strip() != ("yes" if expected else "no"):
+            (output / "client-error.txt").write_text(p.stderr[:2000], encoding="utf-8")
             raise RuntimeError("Unexpected RBAC: " + verb + " " + resource + " " + namespace)
     results = [probe(0, output), probe(17, output)]
     (output / "summary.json").write_text(json.dumps(results, indent=2), encoding="utf-8")

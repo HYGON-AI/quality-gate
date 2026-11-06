@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+import subprocess
 
 SPEC = importlib.util.spec_from_file_location("pilot", Path(__file__).parents[1] / "scripts/arc-volcano-pilot.py")
 pilot = importlib.util.module_from_spec(SPEC)
@@ -8,6 +10,13 @@ SPEC.loader.exec_module(pilot)
 
 
 class PilotTest(unittest.TestCase):
+    def test_explicit_incluster_config_without_inline_token(self):
+        with patch.object(pilot.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "yes\n", "")) as run:
+            pilot.kube("auth", "can-i", "get", "pods")
+        command = run.call_args.args[0]
+        self.assertIn("--kubeconfig=/opt/hygon/kube-incluster.yaml", command)
+        self.assertFalse(any(x.startswith("--token") for x in command))
+
     def test_cpu_only_and_isolated(self):
         m = pilot.manifest("probe", "owner", 0)
         p = m["spec"]["tasks"][0]["template"]["spec"]

@@ -2,5 +2,6 @@ FROM ghcr.io/actions/actions-runner@sha256:e275409999c37162649aa050ca573f03eab2e
 USER root
 COPY kubectl /usr/local/bin/kubectl
 COPY arc-volcano-pilot.py /opt/hygon/arc-volcano-pilot.py
+COPY kube-incluster.yaml /opt/hygon/kube-incluster.yaml
 RUN chmod 0555 /usr/local/bin/kubectl /opt/hygon/arc-volcano-pilot.py
 USER runner

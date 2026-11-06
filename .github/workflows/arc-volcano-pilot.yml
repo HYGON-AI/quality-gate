@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 name: Trusted ARC Volcano CPU pilot
+# Uses explicit projected-ServiceAccount configuration in pilot image 0.1.1.
 on:
   workflow_call:
 permissions:
