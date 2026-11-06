@@ -1,6 +1,7 @@
 # Copyright (c) 2026 Hygon Information Technology Co., Ltd.
 # SPDX-License-Identifier: Apache-2.0
 name: Trigger ARC Volcano CPU reliability
+# Fault injection uses UID-guarded deletion of the test Runner Pod only.
 on:
   push:
     branches: [test/arc-platform-20261106]
