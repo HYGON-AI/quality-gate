@@ -1,9 +1,9 @@
 """Real build and correctness fixture; no network, credentials or host mounts."""
-import base64,ctypes,glob,hashlib,json,os,subprocess,sys,time,traceback,unittest
+import base64,ctypes,glob,hashlib,json,os,subprocess,sys,time,traceback,unittest,concurrent.futures
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-case=sys.argv[1];cards={'cpu':0,'hcu1':1,'hcu2':2,'failure':1,'cancel':1}[case]
+case=sys.argv[1];cards={'cpu':0,'cpu-build':0,'hcu1':1,'hcu2':2,'hcu4':4,'hcu8':8,'failure':1,'cancel':1,'timeout':0}[case]
 out=Path('out');out.mkdir(exist_ok=True)
 report={'case':case,'cards':cards,'started_at':time.time(),'passed':False}
 suite=ET.Element('testsuite',name='arc-e2e-'+case);errors=[];checks=0
@@ -48,11 +48,36 @@ def device_compute():
         torch.testing.assert_close(result,reference)
         a=torch.randn(128,128);b=torch.randn(128,128)
         torch.testing.assert_close((a.to('cuda:'+str(d))@b.to('cuda:'+str(d))).cpu(),a@b,atol=.005,rtol=.005)
+    start=time.monotonic();iterations=0
+    tensors=[(torch.randn(1024,1024,device='cuda:'+str(d)),torch.randn(1024,1024,device='cuda:'+str(d))) for d in range(cards)]
+    while time.monotonic()-start<35:
+        for d,(a,b) in enumerate(tensors):
+            z=a@b
+            require(torch.isfinite(z).all().item(),'non-finite HCU result')
+        iterations+=1
+    report.update(compute_seconds=time.monotonic()-start,iterations=iterations)
     print('HCU_COMPUTE_READY '+json.dumps({'cards':cards,'time':time.time()}),flush=True)
+
+def compile_load():
+    source=out/'load.cpp'
+    source.write_text('#include <cmath>\n'+'\n'.join('double f%d(double x){for(int i=0;i<128;i++)x=sin(x*1.0001+i)+cos(x);return x;}'%i for i in range(256)))
+    start=time.monotonic();deadline=start+35
+    def worker(i):
+        n=0
+        while time.monotonic()<deadline:
+            p=subprocess.run(['g++','-O2','-c',str(source),'-o',str(out/('load-%d.o'%i))],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=30)
+            require(p.returncode==0,p.stdout);n+=1
+        return n
+    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as pool:counts=list(pool.map(worker,range(32)))
+    report.update(compile_workers=32,objects=sum(counts),compile_seconds=time.monotonic()-start)
+    for p in out.glob('load*'):p.unlink()
 print('CI_FIXTURE_STARTED '+json.dumps({'case':case,'time':time.time()}),flush=True)
 check('no_service_account_token',lambda:require(not Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists(),'credential present'))
 check('cpp_build',compile_cpp);check('compiled_cpu_correctness',cpu_correctness)
 check('repository_unit_tests',repo_tests);check('device_allocation_and_compute',device_compute)
+if case=='cpu-build':check('bounded_parallel_compilation',compile_load)
+if case=='timeout':
+    print('TIMEOUT_WINDOW_READY',flush=True);time.sleep(240)
 if case=='failure':check('intentional_failure',lambda:require(False,'intentional e2e assertion failure'))
 if case=='cancel' and not errors:
     print('CANCEL_WINDOW_READY',flush=True);time.sleep(100)
