@@ -1,0 +1,41 @@
+name: Trusted compute overlap and resource queue probes
+on:
+  workflow_call:
+    inputs:
+      scenario:
+        type: string
+        required: true
+      node:
+        type: string
+        default: github-nmz3
+permissions:
+  contents: read
+jobs:
+  combinations:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && contains(fromJSON('["split4","mixed","gpu-queue","cpu-queue"]'), inputs.scenario) && contains(fromJSON('["github-nmz3","github-nmz4","github-nmz6"]'), inputs.node)
+    name: Compute proof ${{ inputs.scenario }} (${{ inputs.node }})
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 9
+    env:
+      CI_NODE: ${{ inputs.node }}
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 68dcb2e9b14524b441676ca7ac9c372ef2beeb48
+          persist-credentials: false
+      - name: Execute bounded multi-job compute probe
+        env:
+          CI_SCENARIO: ${{ inputs.scenario }}
+        run: exec python3 scripts/arc-hcu-combinations.py "$CI_SCENARIO"
+      - name: Independently verify every owned child cleanup
+        if: always()
+        run: exec python3 scripts/arc-hcu-combinations.py cleanup-only
+      - name: Upload child reports timeline and scheduling events
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-combinations-${{ inputs.scenario }}-${{ inputs.node }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-hcu-combinations
+          if-no-files-found: error
+          retention-days: 7
