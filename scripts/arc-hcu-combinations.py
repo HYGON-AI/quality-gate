@@ -9,6 +9,12 @@ SCENARIOS=('split4','mixed','gpu-queue','cpu-queue')
 def require(value,message):
     if not value:raise AssertionError(message)
 
+def ensure_window(now=None):
+    if (time.time() if now is None else now)>=calendar.timegm((2026,11,6,14,45,0)):raise RuntimeError('submission window closed')
+
+def save_ownership(path,records):
+    temporary=path.with_suffix('.tmp');temporary.write_text(json.dumps(records,indent=2));os.replace(temporary,path)
+
 def plan(scenario,node):
     if scenario not in SCENARIOS or node not in fleet.IMAGE_IDS:raise ValueError('unapproved scenario/node')
     cases={'split4':['hcu4','hcu4'],'mixed':['cpu-build','hcu4'],'gpu-queue':['hcu8','hcu1'],'cpu-queue':['cpu-build']*3}[scenario]
@@ -104,7 +110,7 @@ def main():
         (out/'post-cleanup.json').write_text(json.dumps({'verified':not errors,'errors':errors}))
         if errors:raise RuntimeError('independent child cleanup failed')
         print('ALL_CHILDREN_INDEPENDENTLY_CLEANED');return
-    if time.time()>=calendar.timegm((2026,11,6,14,45,0)):raise RuntimeError('submission window closed')
+    ensure_window()
     specs=plan(scenario,os.environ['CI_NODE'])
     require(not own.exists(),'refusing to overwrite existing ownership ledger')
     records=[];timeline=[];events_by_uid={};summary={'scenario':scenario,'run_id':run_id,'runner':runner,'passed':False,'cleanup_verified':False}
@@ -118,10 +124,11 @@ def main():
         (out/'source.json').write_text(json.dumps({'checkout_sha':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),'files':hashes},indent=2))
         until=time.monotonic()+230
         for spec in specs:
+            ensure_window()
             r=dict(spec,owner=uuid.uuid4().hex,uid=None);r['name']='arc-e2e-'+r['owner'][:16]
-            records.append(r);own.write_text(json.dumps(records,indent=2))
+            records.append(r);save_ownership(own,records)
             created=json.loads(base.kube('create','-f','-','-o','json',data=fleet.build_manifest(r['name'],r['owner'],r['case'],run_id,runner,payload,r['node'])).stdout)
-            r['uid']=created['metadata']['uid'];own.write_text(json.dumps(records,indent=2))
+            r['uid']=created['metadata']['uid'];save_ownership(own,records)
             print('CHILD_CREATED '+json.dumps(r),flush=True)
             if scenario=='gpu-queue' and r['slot']=='0':
                 ready_until=min(until,time.monotonic()+60)

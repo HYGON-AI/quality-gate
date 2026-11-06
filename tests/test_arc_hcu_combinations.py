@@ -11,6 +11,10 @@ def child(slot,case,cards,start=10,end=45,minors=None):
         'device_nodes':[{'path':'/dev/dri/renderD'+str(x),'major':226,'minor':x} for x in (minors or [])]}}
 
 class CombinationTests(unittest.TestCase):
+    def test_submission_cutoff(self):
+        m.ensure_window(0)
+        with self.assertRaises(RuntimeError):m.ensure_window(m.calendar.timegm((2026,11,6,14,45,0)))
+
     def test_fixed_plans_fit_budgets(self):
         for scenario,count in [('split4',2),('mixed',2),('gpu-queue',2),('cpu-queue',3)]:
             jobs=m.plan(scenario,'github-nmz3');self.assertEqual(len(jobs),count)
