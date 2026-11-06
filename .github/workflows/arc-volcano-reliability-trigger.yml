@@ -14,6 +14,6 @@ jobs:
   pilot:
     uses: HYGON-AI/quality-gate/.github/workflows/arc-volcano-reliability.yml@82f18b3f116a039dad88ec6f113830056ebc5b66
     with:
-      mode: cancel
+      mode: github-timeout
     permissions:
       contents: read
