@@ -12,6 +12,6 @@ jobs:
   suite:
     uses: HYGON-AI/quality-gate/.github/workflows/arc-soak.yml@8f51d08da572552478a47f9a190d4a7c7aaaddaa
     with:
-      mode: cpu-orphan
+      mode: cpu
     permissions:
       contents: read
