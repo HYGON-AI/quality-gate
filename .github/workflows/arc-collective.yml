@@ -1,0 +1,36 @@
+name: Trusted two-node Gloo and RCCL socket validation
+on:
+  workflow_call:
+    inputs:
+      pair:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  collective:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && contains(fromJSON('["nmz3-nmz4","nmz3-nmz6","nmz4-nmz6"]'), inputs.pair)
+    name: Collective proof ${{ inputs.pair }}
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: f4106eb12695962625bcc25961b88005803b7bce
+          persist-credentials: false
+      - name: Compile test and validate two-rank collectives
+        env:
+          CI_PAIR: ${{ inputs.pair }}
+        run: exec python3 scripts/arc-collective.py "$CI_PAIR"
+      - name: Independently verify owned gang cleanup
+        if: always()
+        run: exec python3 scripts/arc-collective.py cleanup-only
+      - name: Upload rank reports and communication logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-collective-${{ inputs.pair }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-collective
+          if-no-files-found: error
+          retention-days: 7
