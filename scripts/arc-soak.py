@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Five-hour test dispatcher: fixed profiles/nodes, same UID cleanup/report engine."""
-import importlib.util,os
+import importlib.util,os,sys,time,calendar
 from pathlib import Path
 
 s=importlib.util.spec_from_file_location('e2e_base',Path(__file__).with_name('arc-ci-e2e.py'))
@@ -19,6 +19,8 @@ def build_manifest(name,owner,case,run_id,runner,payload,node):
  return j
 
 def main():
+ if sys.argv[1:]!=['cleanup-only'] and time.time()>=calendar.timegm((2026,11,6,14,45,0)):
+  raise RuntimeError('five-hour test submission window has closed')
  node=os.environ['CI_NODE']
  if node not in NODES:raise ValueError('unapproved test node')
  base.NS='github-ci-arc-soak';base.QUEUE='arc-soak'
