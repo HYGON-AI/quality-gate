@@ -10,8 +10,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   suite:
-    uses: HYGON-AI/quality-gate/.github/workflows/arc-hcu-soak.yml@36810674f747b485c88310a916f94a58a6a0e2fe
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-hcu-combinations.yml@baf5572d35a5d1b0a6c4d5cb275a648d02908c1f
     with:
-      case: hcu8
+      scenario: split4
+      node: github-nmz3
     permissions:
       contents: read
