@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: HYGON-AI/quality-gate
-          ref: 58984d3cdbc2b2812c4c6a46b188afbaa9027b91
+          ref: a88adf75fd68c40fd461ae8340a1e2b27d224491
           persist-credentials: false
       - name: Compile and compute through Volcano
         env:
