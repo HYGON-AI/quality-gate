@@ -1,0 +1,17 @@
+name: Trigger controlled three-node ARC soak
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-soak-trigger.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-five-hour-soak
+  cancel-in-progress: false
+jobs:
+  suite:
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-soak.yml@48f380eef2eb06bfa82ceed6ec7964ca3e98e86b
+    with:
+      mode: cpu
+    permissions:
+      contents: read
