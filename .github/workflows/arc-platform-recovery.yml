@@ -1,0 +1,41 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: ARC recovery and checkout
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-platform-recovery.yml]
+permissions:
+  contents: read
+jobs:
+  recovery:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [1, 2]
+    steps:
+      - name: Check fresh filesystem and basic mount isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'runner=%s pod=%s\n' "$RUNNER_NAME" "$HOSTNAME"
+          test ! -e /tmp/arc-platform-20261106-marker
+          test ! -e /var/run/secrets/kubernetes.io/serviceaccount/token
+          test ! -e /home/github/.kube-ci/config
+          test ! -S /var/run/docker.sock
+          echo 'FRESH_FILESYSTEM_AND_BASIC_ISOLATION_PASS'
+      - name: Checkout exact test commit
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          persist-credentials: false
+      - name: Verify checkout and normal execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -f .github/workflows/arc-platform-recovery.yml
+          sleep 15
+          echo 'CHECKOUT_AND_RECOVERY_PASS'
