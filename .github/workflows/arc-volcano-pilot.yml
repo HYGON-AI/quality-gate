@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: Trusted ARC Volcano CPU pilot
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 10
+    steps:
+      - name: Fixed trusted CPU probes (no repository checkout)
+        run: python3 /opt/hygon/arc-volcano-pilot.py
+      - name: Preserve sanitized probe evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-volcano-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-volcano-evidence
+          if-no-files-found: error
+          retention-days: 7

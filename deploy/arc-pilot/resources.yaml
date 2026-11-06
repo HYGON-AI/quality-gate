@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: github-ci-arc-pilot
+  labels:
+    ci.hygon.cn/pilot: arc-cpu-20261106
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.31
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arc-pilot-compute
+  namespace: github-ci-arc-pilot
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arc-pilot-submitter
+  namespace: arc-runners
+automountServiceAccountToken: true
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: arc-pilot-budget
+  namespace: github-ci-arc-pilot
+spec:
+  hard:
+    requests.cpu: "2"
+    limits.cpu: "4"
+    requests.memory: 512Mi
+    limits.memory: 1Gi
+    requests.hygon.com/hcu: "0"
+    requests.hygon.com/dcu: "0"
+    pods: "4"
+    count/jobs.batch.volcano.sh: "4"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: arc-pilot-container-budget
+  namespace: github-ci-arc-pilot
+spec:
+  limits:
+    - type: Container
+      default: {cpu: "1", memory: 128Mi}
+      defaultRequest: {cpu: 100m, memory: 64Mi}
+      max: {cpu: "1", memory: 256Mi}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arc-pilot-deny-network
+  namespace: github-ci-arc-pilot
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: scheduling.volcano.sh/v1beta1
+kind: Queue
+metadata:
+  name: arc-cpu-pilot
+  labels: {ci.hygon.cn/pilot: arc-cpu-20261106}
+spec:
+  weight: 1
+  reclaimable: true
+  capability:
+    cpu: "2"
+    memory: 512Mi
+    hygon.com/hcu: "0"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-pilot-submit
+  namespace: github-ci-arc-pilot
+rules:
+  - apiGroups: [batch.volcano.sh]
+    resources: [jobs]
+    verbs: [create, get, list, watch, delete]
+  - apiGroups: [""]
+    resources: [pods, pods/log, events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-pilot-submit
+  namespace: github-ci-arc-pilot
+subjects:
+  - kind: ServiceAccount
+    name: arc-pilot-submitter
+    namespace: arc-runners
+roleRef:
+  kind: Role
+  name: arc-pilot-submit
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: arc-cpu-pilot-boundary
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels: {ci.hygon.cn/pilot: arc-cpu-20261106}
+    resourceRules:
+      - apiGroups: [batch.volcano.sh]
+        apiVersions: [v1alpha1]
+        operations: [CREATE, UPDATE]
+        resources: [jobs]
+  validations:
+    - expression: "object.spec.queue == 'arc-cpu-pilot' && (!has(object.spec.plugins) || size(object.spec.plugins) == 0)"
+      message: "Pilot must use its CPU queue and cannot enable Volcano plugins"
+    - expression: "size(object.spec.tasks) == 1 && object.spec.tasks.all(t, t.replicas == 1)"
+      message: "Pilot permits one single-replica task only"
+    - expression: "object.spec.tasks.all(t, t.template.spec.serviceAccountName == 'arc-pilot-compute' && t.template.spec.automountServiceAccountToken == false && (!has(t.template.spec.volumes) || size(t.template.spec.volumes) == 0))"
+      message: "Compute pods cannot mount credentials or volumes"
+    - expression: "object.spec.tasks.all(t, t.template.spec.nodeSelector['kubernetes.io/hostname'] == 'github-nmz3' && t.template.spec.activeDeadlineSeconds <= 120 && size(t.template.spec.containers) == 1 && (!has(t.template.spec.initContainers) || size(t.template.spec.initContainers) == 0))"
+      message: "Pilot must be bounded and pinned to nmz3"
+    - expression: "object.spec.tasks.all(t, t.template.spec.containers.all(c, c.image == 'ghcr.io/actions/actions-runner@sha256:e275409999c37162649aa050ca573f03eab2eabcb3a1e7fcc47548de6b4f9690' && c.resources.requests.all(k, k in ['cpu', 'memory']) && c.resources.limits.all(k, k in ['cpu', 'memory'])))"
+      message: "Pilot allows only the fixed CPU image, CPU and memory resources"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: arc-cpu-pilot-boundary
+spec:
+  policyName: arc-cpu-pilot-boundary
+  validationActions: [Deny]
