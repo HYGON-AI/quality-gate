@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: ARC bounded CPU and tool readiness
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-platform-cpu-tools.yml]
+permissions:
+  contents: read
+jobs:
+  cpu-tools:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 3
+    steps:
+      - name: Inspect tool availability without changing the image
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in bash git tar gzip sha256sum python3 kubectl helm docker; do
+            if command -v "$tool" >/dev/null 2>&1; then
+              printf 'TOOL_AVAILABLE %s\n' "$tool"
+            else
+              printf 'TOOL_MISSING %s\n' "$tool"
+            fi
+          done
+          for tool in bash git tar gzip sha256sum; do command -v "$tool" >/dev/null; done
+      - name: Small CPU and writable-directory smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_dir=$(mktemp -d "$RUNNER_TEMP/arc-cpu-XXXXXX")
+          mkdir -p "$probe_dir/input" "$probe_dir/output"
+          dd if=/dev/zero of="$probe_dir/input/payload.bin" bs=1024 count=1024 status=none
+          (cd "$probe_dir/input" && sha256sum payload.bin > SHA256SUMS)
+          tar -czf "$probe_dir/payload.tar.gz" -C "$probe_dir/input" .
+          tar -xzf "$probe_dir/payload.tar.gz" -C "$probe_dir/output"
+          (cd "$probe_dir/output" && sha256sum -c SHA256SUMS)
+          cmp "$probe_dir/input/payload.bin" "$probe_dir/output/payload.bin"
+          printf 'workspace-write-test\n' > "$GITHUB_WORKSPACE/arc-write-probe.txt"
+          grep -Fx 'workspace-write-test' "$GITHUB_WORKSPACE/arc-write-probe.txt"
+          test ! -e /var/run/secrets/kubernetes.io/serviceaccount/token
+          test ! -S /var/run/docker.sock
+          echo 'CPU_ARCHIVE_CHECKSUM_AND_DIRECTORY_RW_PASS'
