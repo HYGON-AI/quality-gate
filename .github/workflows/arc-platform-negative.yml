@@ -1,0 +1,43 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: ARC negative tests (expected failure)
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-platform-negative.yml]
+permissions:
+  contents: read
+jobs:
+  deliberate-failure:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 3
+    steps:
+      - name: Verify basic isolation and return deliberate exit 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'runner=%s pod=%s\n' "$RUNNER_NAME" "$HOSTNAME"
+          test ! -e /tmp/arc-platform-20261106-marker
+          test ! -e /var/run/secrets/kubernetes.io/serviceaccount/token
+          test ! -e /home/github/.kube-ci/config
+          test ! -S /var/run/docker.sock
+          touch /tmp/arc-platform-20261106-marker
+          echo 'ISOLATION_PASS; EXPECTED_FAILURE_EXIT_17'
+          exit 17
+  deliberate-timeout:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 1
+    steps:
+      - name: Exceed one-minute deadline deliberately
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'runner=%s pod=%s\n' "$RUNNER_NAME" "$HOSTNAME"
+          test ! -e /tmp/arc-platform-20261106-marker
+          touch /tmp/arc-platform-20261106-marker
+          echo 'EXPECTED_TIMEOUT; no PASS is expected'
+          sleep 180
+          echo 'ERROR: deadline did not interrupt this step'
+          exit 19

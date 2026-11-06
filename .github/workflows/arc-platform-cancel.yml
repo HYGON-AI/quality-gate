@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: ARC cancellation test (expected cancelled)
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-platform-cancel.yml]
+permissions:
+  contents: read
+jobs:
+  cancellation:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 6
+    steps:
+      - name: Wait for explicit cancellation of this test only
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'runner=%s pod=%s\n' "$RUNNER_NAME" "$HOSTNAME"
+          test ! -e /tmp/arc-platform-20261106-marker
+          touch /tmp/arc-platform-20261106-marker
+          echo 'READY_FOR_CANCELLATION'
+          sleep 300
+          echo 'ERROR: cancellation was not delivered'
+          exit 19
