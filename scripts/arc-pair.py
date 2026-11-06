@@ -70,6 +70,7 @@ def main():
      assert all(v and v['passed'] and v['rank']==int(k) and v['rounds']==20 for k,v in ranks.items())
      assert ranks['0']['checksum']==ranks['1']['checksum']
      assert all(v['peer_address'][0]==actual_ips[str(1-int(k))] for k,v in ranks.items())
+     assert ranks['0']['local_listening_control_passed'] and all(v['denied_port_test']['denied'] for v in ranks.values())
      summary.update(passed=True,nodes=sorted(actual_nodes),ranks=ranks,phase=phase)
      print('PAIR_PASS '+json.dumps(summary),flush=True);return
    time.sleep(2)

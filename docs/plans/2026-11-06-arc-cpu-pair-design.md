@@ -29,3 +29,7 @@
 - GitHub cannot pass if either pod/report/exit/node verification fails. Logs/JUnit/build binaries uploaded for both ranks. Cancellation and deadlines apply to entire gang; no blind namespace delete.
 - Reference: https://kubernetes.io/docs/concepts/services-networking/network-policies/ and https://volcano.sh/docs/v1.13.0/userguide/user_guide_how_to_use_job_policy/ (installed CRD/server dry-run remains authoritative for1.12.2).
 - Continue CPU soak batches only when prior batch finished; preserve any external pools added by another operator. Stop submissions14:45Z, cleanup by15:00Z.
+
+## Step6 concrete denied-port check
+
+Keep all policies unchanged. Rank0 additionally listens on29501 and proves its local loopback client can connect; while this listener remains live, rank1 must time out connecting to the master's actual PodIP29501, then complete the allowed29500TCP protocol. Connection-refused is NOT accepted as proof (could be absent listener); a successful forbidden connection fails the test. Validate the pure bounded probe with timeout/refused/success unit cases before updating pinned source and workflow. This proves only the specific inter-Pod forbidden port, not all egress isolation.

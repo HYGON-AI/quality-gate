@@ -6,7 +6,7 @@ from pathlib import Path
 NS='github-ci-arc-e2e';QUEUE='arc-e2e';RESOURCE='jobs.batch.volcano.sh'
 LABEL='ci.hygon.cn/e2e-owner';RUN='ci.hygon.cn/e2e-run'
 IMAGE='42.228.13.241:5000/dcu/admin/base/pytorch@sha256:07c285c51837d76fbcc73b771b1a95ecf2d8b71203e5feadb3cb9cb12b5d3f4d'
-FILES=('tests/fixtures/arc_e2e/axpy.cpp','tests/fixtures/arc_e2e/run_ci.py','tests/fixtures/arc_e2e/run_pair.py',
+FILES=('tests/fixtures/arc_e2e/axpy.cpp','tests/fixtures/arc_e2e/run_ci.py','tests/fixtures/arc_e2e/run_pair.py','tests/fixtures/arc_e2e/pair_protocol.py',
        'scripts/arc-volcano-pilot.py','scripts/arc-volcano-reliability.py','scripts/arc-nmz3-hcu-validation.py',
        'tests/test_arc_volcano_pilot.py','tests/test_arc_volcano_reliability.py','tests/test_arc_nmz3_hcu_validation.py')
 CASES={'cpu':0,'cpu-build':0,'hcu1':1,'hcu2':2,'hcu4':4,'hcu8':8,'failure':1,'cancel':1,'timeout':0,
