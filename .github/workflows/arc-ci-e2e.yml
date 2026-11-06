@@ -1,0 +1,42 @@
+name: Trusted ARC real CI end-to-end
+on:
+  workflow_call:
+    inputs:
+      mode:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build-test:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && contains(fromJSON('["success","failure","cancel","recovery"]'), inputs.mode)
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        case: ${{ fromJSON(inputs.mode == 'success' && '["cpu","hcu1","hcu2"]' || inputs.mode == 'failure' && '["failure"]' || inputs.mode == 'cancel' && '["cancel"]' || '["cpu","hcu1"]') }}
+    name: Build and test (${{ matrix.case }})
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 6
+    steps:
+      - name: Checkout immutable trusted CI code
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 74829ff5987e0051ca37f00c689812d940389eac
+          persist-credentials: false
+      - name: Compile and test in bounded Volcano task
+        env:
+          CI_CASE: ${{ matrix.case }}
+        run: exec python3 scripts/arc-ci-e2e.py "$CI_CASE"
+      - name: Independently verify compute cleanup
+        if: always()
+        run: exec python3 scripts/arc-ci-e2e.py cleanup-only
+      - name: Upload verified build and test artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-e2e-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-ci-e2e
+          if-no-files-found: error
+          retention-days: 7
