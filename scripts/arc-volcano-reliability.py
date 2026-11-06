@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import time
@@ -17,6 +18,45 @@ S.loader.exec_module(pilot)
 MODES = ('queue', 'compute-timeout', 'github-timeout', 'cancel', 'runner-loss', 'recovery')
 RUN_LABEL = 'ci.hygon.cn/test-run'
 MODE_LABEL = 'ci.hygon.cn/test-mode'
+
+
+def install_cancel_handlers():
+    def interrupt(*_):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGINT, interrupt)
+    signal.signal(signal.SIGTERM, interrupt)
+
+
+def validate_record(record):
+    owner = record.get('owner', '')
+    if not re.fullmatch('[0-9a-f]{32}', owner) or record.get('name') != 'arc-rel-' + owner[:16]:
+        raise ValueError('Invalid cleanup identity')
+    if record.get('uid') is not None:
+        uuid.UUID(record['uid'])
+
+
+def cleanup_saved(out, run_id, runner):
+    path = out / 'ownership.json'
+    if not path.exists():
+        print('NO_CREATED_COMPUTE_RECORDS', flush=True)
+        return
+    records = json.loads(path.read_text())
+    if not isinstance(records, list) or len(records) > 3:
+        raise ValueError('Unexpected cleanup records')
+    for record in records:
+        validate_record(record)
+        raw = pilot.kube('get', pilot.RESOURCE, record['name'], '--ignore-not-found', '-o', 'json').stdout
+        if raw.strip():
+            obj = json.loads(raw)
+            meta = obj['metadata']
+            if meta.get('labels', {}).get(RUN_LABEL) != run_id or meta.get('annotations', {}).get('ci.hygon.cn/dispatch-runner') != runner:
+                raise RuntimeError('Cleanup run/runner correlation mismatch')
+        pilot.cleanup(record['name'], record['owner'], record['uid'])
+        pods = json.loads(pilot.kube('get', 'pods', '-l', pilot.LABEL + '=' + record['owner'], '-o', 'json').stdout)['items']
+        if pods:
+            raise RuntimeError('Owned Pods still present')
+    (out / 'post-cleanup.json').write_text(json.dumps({'verified': True, 'run_id': run_id}))
+    print('POST_STEP_COMPUTE_CLEANUP_VERIFIED', flush=True)
 
 
 def make_manifest(name, owner, mode, run_id, runner):
@@ -67,7 +107,7 @@ def sample(record):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices=MODES)
+    parser.add_argument('mode', choices=MODES + ('cleanup-only',))
     mode = parser.parse_args().mode
     run_id = os.environ['GITHUB_RUN_ID']
     if not run_id.isdigit():
@@ -75,6 +115,10 @@ def main():
     runner = os.environ['RUNNER_NAME']
     out = Path(os.environ['RUNNER_TEMP']) / 'arc-reliability-evidence'
     out.mkdir(exist_ok=True)
+    if mode == 'cleanup-only':
+        cleanup_saved(out, run_id, runner)
+        return
+    install_cancel_handlers()
     if mode == 'recovery':
         result = [pilot.probe(0, out), pilot.probe(17, out)]
         (out / 'summary.json').write_text(json.dumps(result, indent=2))
@@ -84,7 +128,6 @@ def main():
     records, snapshots = [], []
     summary = {'run_id': run_id, 'runner': runner, 'mode': mode, 'passed': False}
     (out / 'summary.json').write_text(json.dumps(summary))
-    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     try:
         for _ in range(3 if mode == 'queue' else 1):
             owner = uuid.uuid4().hex

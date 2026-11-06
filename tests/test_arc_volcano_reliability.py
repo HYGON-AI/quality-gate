@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest import mock
 
 S = importlib.util.spec_from_file_location('rel', Path(__file__).parents[1] / 'scripts/arc-volcano-reliability.py')
 rel = importlib.util.module_from_spec(S)
@@ -8,6 +9,15 @@ S.loader.exec_module(rel)
 
 
 class ReliabilityTest(unittest.TestCase):
+    def test_registers_both_cancel_signals(self):
+        with mock.patch.object(rel.signal, 'signal') as register:
+            rel.install_cancel_handlers()
+            self.assertEqual({c.args[0] for c in register.call_args_list}, {rel.signal.SIGINT, rel.signal.SIGTERM})
+
+    def test_invalid_cleanup_identity_fails_closed(self):
+        with self.assertRaises(ValueError):
+            rel.validate_record({'name': 'production', 'owner': 'x', 'uid': 'y'})
+
     def test_all_modes_are_bounded_cpu_only(self):
         for mode in rel.MODES:
             if mode == 'recovery':
