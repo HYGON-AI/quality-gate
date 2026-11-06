@@ -9,7 +9,8 @@ IMAGE='42.228.13.241:5000/dcu/admin/base/pytorch@sha256:07c285c51837d76fbcc73b77
 FILES=('tests/fixtures/arc_e2e/axpy.cpp','tests/fixtures/arc_e2e/run_ci.py',
        'scripts/arc-volcano-pilot.py','scripts/arc-volcano-reliability.py','scripts/arc-nmz3-hcu-validation.py',
        'tests/test_arc_volcano_pilot.py','tests/test_arc_volcano_reliability.py','tests/test_arc_nmz3_hcu_validation.py')
-CASES={'cpu':0,'cpu-build':0,'hcu1':1,'hcu2':2,'hcu4':4,'hcu8':8,'failure':1,'cancel':1,'timeout':0}
+CASES={'cpu':0,'cpu-build':0,'hcu1':1,'hcu2':2,'hcu4':4,'hcu8':8,'failure':1,'cancel':1,'timeout':0,
+       'cpu-failure':0,'cpu-cancel':0,'cpu-timeout':0,'cpu-orphan':0}
 
 def bundle(root):
     data={p:(root/p).read_text(encoding='utf-8') for p in FILES}

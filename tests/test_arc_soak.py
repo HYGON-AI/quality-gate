@@ -19,6 +19,12 @@ class SoakTests(unittest.TestCase):
     self.assertEqual(c['resources']['requests'],c['resources']['limits'])
     self.assertNotIn('volumes',p)
   with self.assertRaises(ValueError):m.build_manifest('x','x','cpu','1','r','x','github-nmz1')
+ def test_cpu_fault_profiles_never_allocate_hcu(self):
+  m=load('soak_fault','scripts/arc-soak.py')
+  for case in ['cpu-failure','cpu-cancel','cpu-timeout','cpu-orphan']:
+   j=m.build_manifest('arc-e2e-'+'a'*16,'a'*32,case,'123','runner','payload','github-nmz3')
+   c=j['spec']['tasks'][0]['template']['spec']['containers'][0]
+   self.assertNotIn('hygon.com/hcu',c['resources']['limits'])
  def test_namespace_isolated_and_no_admin_access(self):
   m=load('resources','deploy/arc-soak/resources.py');objs=m.resources(ROOT)
   ns=next(x for x in objs if x['kind']=='Namespace')
