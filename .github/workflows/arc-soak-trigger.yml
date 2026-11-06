@@ -12,7 +12,7 @@ jobs:
   suite:
     uses: HYGON-AI/quality-gate/.github/workflows/arc-hcu-combinations.yml@baf5572d35a5d1b0a6c4d5cb275a648d02908c1f
     with:
-      scenario: split4
+      scenario: mixed
       node: github-nmz3
     permissions:
       contents: read
