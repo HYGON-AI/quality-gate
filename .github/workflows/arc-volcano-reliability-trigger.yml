@@ -1,0 +1,19 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: Trigger ARC Volcano CPU reliability
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-volcano-reliability-trigger.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-volcano-cpu-reliability
+  cancel-in-progress: false
+jobs:
+  pilot:
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-volcano-reliability.yml@e0b020bbea4fac7c496e6fbdf462239241968861
+    with:
+      mode: queue
+    permissions:
+      contents: read
