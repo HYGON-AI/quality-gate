@@ -75,7 +75,7 @@ def device_compute():
 def compile_load():
     source=out/'load.cpp'
     source.write_text('#include <cmath>\n'+'\n'.join('double f%d(double x){for(int i=0;i<128;i++)x=sin(x*1.0001+i)+cos(x);return x;}'%i for i in range(256)))
-    start=time.monotonic();deadline=start+35
+    start=time.monotonic();deadline=start+35;report['compile_started_at']=time.time()
     def worker(i):
         n=0
         while time.monotonic()<deadline:
@@ -83,7 +83,7 @@ def compile_load():
             require(p.returncode==0,p.stdout);n+=1
         return n
     with concurrent.futures.ThreadPoolExecutor(max_workers=32) as pool:counts=list(pool.map(worker,range(32)))
-    report.update(compile_workers=32,objects=sum(counts),compile_seconds=time.monotonic()-start)
+    report.update(compile_workers=32,objects=sum(counts),compile_seconds=time.monotonic()-start,compile_finished_at=time.time())
     for p in out.glob('load*'):p.unlink()
 print('CI_FIXTURE_STARTED '+json.dumps({'case':case,'time':time.time()}),flush=True)
 check('no_service_account_token',lambda:require(not Path('/var/run/secrets/kubernetes.io/serviceaccount/token').exists(),'credential present'))
