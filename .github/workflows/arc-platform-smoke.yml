@@ -1,0 +1,37 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: ARC platform smoke (test branch only)
+
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-platform-smoke.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arc-platform-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106'
+    name: ARC smoke ${{ matrix.task }}
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [1, 2, 3, 4, 5, 6]
+    steps:
+      - name: Identify runner and exercise bounded concurrency
+        shell: bash
+        env:
+          TASK_ID: ${{ matrix.task }}
+        run: |
+          set -euo pipefail
+          printf 'task=%s runner=%s pod=%s start=%s\n' "$TASK_ID" "$RUNNER_NAME" "$HOSTNAME" "$(date -u +%FT%TZ)"
+          sleep 60
+          printf 'task=%s result=PASS end=%s\n' "$TASK_ID" "$(date -u +%FT%TZ)"
