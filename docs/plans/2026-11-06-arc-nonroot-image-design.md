@@ -17,3 +17,7 @@ Alternatives: runtime root would broaden the boundary and requires unanswered ap
 5. Only after this succeeds, determine controlled distribution to nmz4/6. No unapproved registry push, large archive or disk cleanup. Until a registry digest/distribution is verified, treat the image as nmz3-only, not fleet-ready.
 
 Stop if disk free <25Gi, image identity mismatch, unexpected foreign HCU use, or unchanged tensor failure. Original image and production workflows remain untouched. Root test namespace is not approved or required by this approach.
+
+## After nmz3 one/two-card pass: controlled test availability
+
+Both full-chain cases passed on nmz3. For this temporary test, build the identical Dockerfile offline on nmz4 and nmz6 using their already cached exact base. No registry push, base-image export or large archive is required. Refuse to overwrite any pre-existing target tag without a recorded owned image ID. Record each node's immutable image ID and Dockerfile hash; node-specific IDs may differ because builds include creation timestamps. A new isolated dispatcher must verify the actual pod image ID against the node-specific recorded ID, not merely accept a common tag. This is test-only distribution, NOT a production immutable-registry release. Retain old boundaries unchanged and perform admission tests before binding new namespace access.
