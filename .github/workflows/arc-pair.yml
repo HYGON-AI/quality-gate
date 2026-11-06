@@ -1,0 +1,36 @@
+name: Trusted ARC two-node CPU pair
+on:
+  workflow_call:
+    inputs:
+      pair:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  pair:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && contains(fromJSON('["nmz3-nmz4","nmz3-nmz6","nmz4-nmz6"]'), inputs.pair)
+    name: Two-node CPU ${{ inputs.pair }}
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 7
+    env:
+      CI_PAIR: ${{ inputs.pair }}
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 8a30e1f96e74d02de099dfbe1bbd84d84edeb224
+          persist-credentials: false
+      - name: Compile and communicate in two-node Volcano gang
+        run: exec python3 scripts/arc-pair.py "$CI_PAIR"
+      - name: Independently verify whole gang cleanup
+        if: always()
+        run: exec python3 scripts/arc-pair.py cleanup-only
+      - name: Upload both ranks reports and build outputs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-pair-${{ inputs.pair }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-pair
+          retention-days: 7
+          if-no-files-found: error
