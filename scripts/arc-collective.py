@@ -12,7 +12,9 @@ def manifest(name,owner,which,run_id,runner,payload):
  p=t['template']['spec'];p['serviceAccountName']='arc-collective-compute';c=p['containers'][0]
  c['image']=fleet.IMAGE
  for kind in ['requests','limits']:c['resources'][kind].update(memory='16Gi',**{'hygon.com/hcu':'1'})
- c['command'][-1]=c['command'][-1].replace('run_pair.py','run_collective.py')
+ old="[sys.executable,'-u','tests/fixtures/arc_e2e/run_pair.py']"
+ assert c['command'][-1].count(old)==1,'unexpected bootstrap launch'
+ c['command'][-1]=c['command'][-1].replace(old,"[sys.executable,'-u','tests/fixtures/arc_e2e/run_collective.py']")
  c['env'] += [{'name':k,'value':v} for k,v in {'GLOO_SOCKET_IFNAME':'eth0','NCCL_SOCKET_IFNAME':'eth0','NCCL_IB_DISABLE':'1','NCCL_DEBUG':'INFO','NCCL_DEBUG_SUBSYS':'INIT,NET,ENV','MASTER_ADDR':'arc-collective-master.github-ci-arc-collective.svc.cluster.local'}.items()]
  return j
 def validate_results(which,ranks,nodes,ips,logs):

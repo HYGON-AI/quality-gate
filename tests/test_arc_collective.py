@@ -1,9 +1,17 @@
-import copy,importlib.util,unittest
+import ast,base64,copy,gzip,importlib.util,json,unittest
 from pathlib import Path
 ROOT=Path(__file__).parents[1]
 def load(name,path):
  s=importlib.util.spec_from_file_location(name,ROOT/path);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 class CollectiveTests(unittest.TestCase):
+ def test_bootstrap_allowlist_matches_real_payload(self):
+  m=load('collective','scripts/arc-collective.py');m.pair.base.FILES += ('tests/fixtures/arc_e2e/run_collective.py',)
+  payload,_=m.pair.base.bundle(ROOT);data=json.loads(gzip.decompress(base64.b64decode(payload)))
+  j=m.manifest('arc-e2e-'+'a'*16,'a'*32,'nmz3-nmz4','123','runner',payload)
+  code=j['spec']['tasks'][0]['template']['spec']['containers'][0]['command'][-1];tree=ast.parse(code)
+  allowed=ast.literal_eval(tree.body[2].value)
+  self.assertEqual(set(data),set(allowed));self.assertEqual(len(allowed),len(set(allowed)))
+  self.assertIn("os.execv(sys.executable,[sys.executable,'-u','tests/fixtures/arc_e2e/run_collective.py'])",code)
  def test_manifest_bounds(self):
   m=load('collective','scripts/arc-collective.py')
   for pair,nodes in m.pair.PAIRS.items():
