@@ -1,0 +1,44 @@
+name: Trusted three-node ARC soak
+on:
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  cpu:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && inputs.mode == 'cpu'
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        node: [github-nmz3, github-nmz4, github-nmz6]
+        case: [cpu, cpu-build]
+    name: Soak ${{ matrix.case }} on ${{ matrix.node }}
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 7
+    env:
+      CI_NODE: ${{ matrix.node }}
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 1dd9d73b89d08ff27480eabd46ef0bf39401b8c5
+          persist-credentials: false
+      - name: Real build and test via Volcano
+        env:
+          CI_CASE: ${{ matrix.case }}
+        run: exec python3 scripts/arc-soak.py "$CI_CASE"
+      - name: Independently verify owned compute cleanup
+        if: always()
+        run: exec python3 scripts/arc-soak.py cleanup-only
+      - name: Upload reports and build artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-soak-${{ matrix.node }}-${{ matrix.case }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-ci-e2e
+          retention-days: 7
+          if-no-files-found: error
