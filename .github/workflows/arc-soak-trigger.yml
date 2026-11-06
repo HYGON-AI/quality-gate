@@ -12,6 +12,6 @@ jobs:
   suite:
     uses: HYGON-AI/quality-gate/.github/workflows/arc-pair.yml@7ca391937f0c9867282750aa1d8e6299dc43502a
     with:
-      pair: nmz4-nmz6
+      pair: nmz3-nmz4
     permissions:
       contents: read
