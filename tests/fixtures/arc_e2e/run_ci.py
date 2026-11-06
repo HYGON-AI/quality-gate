@@ -2,12 +2,18 @@
 import base64,ctypes,glob,hashlib,json,os,subprocess,sys,time,traceback,unittest,concurrent.futures
 from pathlib import Path
 from xml.etree import ElementTree as ET
+from memory_probe import snapshot
 
 case=sys.argv[1];cards={'cpu':0,'cpu-build':0,'hcu1':1,'hcu2':2,'hcu4':4,'hcu8':8,'failure':1,'cancel':1,'timeout':0,
     'cpu-failure':0,'cpu-cancel':0,'cpu-timeout':0,'cpu-orphan':0}[case]
 out=Path('out');out.mkdir(exist_ok=True)
 report={'case':case,'cards':cards,'started_at':time.time(),'passed':False}
 suite=ET.Element('testsuite',name='arc-e2e-'+case);errors=[];checks=0
+
+def sample_memory(stage):
+    item={'stage':stage,'time':time.time(),**snapshot()}
+    report.setdefault('memory_samples',[]).append(item)
+    print('CI_MEMORY_SNAPSHOT '+json.dumps(item),flush=True)
 def check(name,fn):
     global checks
     checks+=1;t=ET.SubElement(suite,'testcase',name=name);start=time.monotonic()
@@ -40,23 +46,30 @@ def device_compute():
         require(not glob.glob('/dev/dri/*') and not Path('/dev/kfd').exists(),'CPU container sees HCU devices')
         report['visible_cards']=0;return
     import torch
+    sample_memory('torch_imported')
     torch.set_num_threads(2)
     require(torch.cuda.device_count()==cards,'wrong visible card count')
-    report.update(visible_cards=cards,torch=torch.__version__,devices=glob.glob('/dev/dri/*'))
+    devices=glob.glob('/dev/dri/*')
+    report.update(visible_cards=cards,torch=torch.__version__,devices=devices,
+        device_nodes=[{'path':p,'major':os.major(os.stat(p).st_rdev),'minor':os.minor(os.stat(p).st_rdev)} for p in devices])
     torch.manual_seed(123);x=torch.randn(4096);y=torch.randn(4096);reference=2.5*x+y
     for d in range(cards):
+        sample_memory('before_device_'+str(d))
         result=(2.5*x.to('cuda:'+str(d))+y.to('cuda:'+str(d))).cpu()
         torch.testing.assert_close(result,reference)
         a=torch.randn(128,128);b=torch.randn(128,128)
         torch.testing.assert_close((a.to('cuda:'+str(d))@b.to('cuda:'+str(d))).cpu(),a@b,atol=.005,rtol=.005)
+        sample_memory('after_device_'+str(d))
     start=time.monotonic();iterations=0
     tensors=[(torch.randn(1024,1024,device='cuda:'+str(d)),torch.randn(1024,1024,device='cuda:'+str(d))) for d in range(cards)]
+    report['gpu_compute_started_at']=time.time()
     while time.monotonic()-start<35:
         for d,(a,b) in enumerate(tensors):
             z=a@b
             require(torch.isfinite(z).all().item(),'non-finite HCU result')
         iterations+=1
-    report.update(compute_seconds=time.monotonic()-start,iterations=iterations)
+    report.update(compute_seconds=time.monotonic()-start,iterations=iterations,gpu_compute_finished_at=time.time())
+    sample_memory('hcu_compute_finished')
     print('HCU_COMPUTE_READY '+json.dumps({'cards':cards,'time':time.time()}),flush=True)
 
 def compile_load():

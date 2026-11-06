@@ -20,6 +20,7 @@ class HcuSoakTests(unittest.TestCase):
                 self.assertEqual(c['imagePullPolicy'],'Never')
                 self.assertEqual(int(c['resources']['limits'].get('hygon.com/hcu','0')),cards)
                 self.assertEqual(c['resources']['limits']['cpu'],'32' if case=='cpu-build' else '2')
+                self.assertEqual(c['resources']['limits']['memory'],{'cpu-build':'16Gi','hcu4':'16Gi','hcu8':'32Gi'}.get(case,'8Gi'))
         for node,case in [('github-nmz1','hcu1'),('github-nmz3','hcu16')]:
             with self.assertRaises(ValueError):m.build_manifest('x','a'*32,case,'123','runner','dummy',node)
 
@@ -41,6 +42,7 @@ class HcuSoakTests(unittest.TestCase):
         self.assertIn("in ['1','2','4','8']",policy)
         self.assertIn('runAsUser == 1001',policy)
         self.assertIn('quality-gate-hcu-test:nonroot-20261106-v1',policy)
+        self.assertIn("in ['8Gi','16Gi','32Gi']",policy)
         self.assertNotIn('secrets',str(next(x for x in objs if x['kind']=='Role')))
         self.assertNotIn('github-ci-arc-hcu-soak',(ROOT/'deploy/arc-e2e/resources.yaml').read_text())
 

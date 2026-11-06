@@ -22,6 +22,8 @@ def build_manifest(name,owner,case,run_id,runner,payload,node):
     p['containers'][0]['image']=IMAGE
     if case=='cpu-build':
         for kind in ('requests','limits'):p['containers'][0]['resources'][kind].update(cpu='32',memory='16Gi')
+    if case in ('hcu4','hcu8'):
+        for kind in ('requests','limits'):p['containers'][0]['resources'][kind]['memory']='16Gi' if case=='hcu4' else '32Gi'
     return j
 
 def verify_image(pod,node,required=False):
