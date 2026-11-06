@@ -79,7 +79,7 @@ spec:
         operations: [CREATE, UPDATE]
         resources: [jobs]
   validations:
-    - expression: "object.spec.queue == 'arc-e2e' && object.spec.schedulerName == 'volcano' && (!has(object.spec.plugins) || size(object.spec.plugins) == 0) && object.spec.maxRetry == 1 && object.spec.minAvailable == 1 && object.spec.ttlSecondsAfterFinished <= 600 && object.spec.policies == [{'event':'TaskCompleted','action':'CompleteJob'},{'event':'PodFailed','action':'TerminateJob'}]"
+    - expression: "object.spec.queue == 'arc-e2e' && object.spec.schedulerName == 'volcano' && (!has(object.spec.plugins) || size(object.spec.plugins) == 0) && object.spec.maxRetry == 1 && object.spec.minAvailable == 1 && object.spec.ttlSecondsAfterFinished <= 600 && size(object.spec.policies) == 2 && object.spec.policies[0].event == 'TaskCompleted' && object.spec.policies[0].action == 'CompleteJob' && object.spec.policies[1].event == 'PodFailed' && object.spec.policies[1].action == 'TerminateJob'"
       message: "E2E job requires fixed queue/scheduler, bounded TTL, no retry/plugins"
     - expression: "size(object.spec.tasks) == 1 && object.spec.tasks.all(t, t.replicas == 1 && (!has(t.policies) || size(t.policies) == 0))"
       message: "E2E job has one task/replica"

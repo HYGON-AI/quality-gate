@@ -1,0 +1,17 @@
+name: Trigger ARC real CI end-to-end
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-ci-e2e-trigger.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-real-ci-e2e
+  cancel-in-progress: false
+jobs:
+  suite:
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-ci-e2e.yml@7faf49903bcd56c33fe2502a952c4e149bd91b8e
+    with:
+      mode: success
+    permissions:
+      contents: read
