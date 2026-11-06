@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: HYGON-AI/quality-gate
-          ref: 8a30e1f96e74d02de099dfbe1bbd84d84edeb224
+          ref: 794cc579b2ad3e547b285f6b205684780766fe8b
           persist-credentials: false
       - name: Compile and communicate in two-node Volcano gang
         run: exec python3 scripts/arc-pair.py "$CI_PAIR"
