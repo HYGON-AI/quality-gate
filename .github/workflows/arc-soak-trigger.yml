@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   suite:
-    uses: HYGON-AI/quality-gate/.github/workflows/arc-pair.yml@8f6bff03a7c84d500668d33734727e5277bc1d5b
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-pair.yml@7ca391937f0c9867282750aa1d8e6299dc43502a
     with:
       pair: nmz4-nmz6
     permissions:
