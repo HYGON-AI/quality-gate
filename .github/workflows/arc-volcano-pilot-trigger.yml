@@ -1,0 +1,17 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+name: Trigger bounded ARC Volcano CPU pilot
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-volcano-pilot-trigger.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-volcano-cpu-pilot
+  cancel-in-progress: false
+jobs:
+  pilot:
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-volcano-pilot.yml@d36424370eac95818d755982eea4aea2890a42f8
+    permissions:
+      contents: read
