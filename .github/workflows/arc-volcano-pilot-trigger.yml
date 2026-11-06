@@ -12,6 +12,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pilot:
-    uses: HYGON-AI/quality-gate/.github/workflows/arc-volcano-pilot.yml@d36424370eac95818d755982eea4aea2890a42f8
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-volcano-pilot.yml@9fa32e3cc8361df3ef3bb542bf3c128a7c1e934f
     permissions:
       contents: read
