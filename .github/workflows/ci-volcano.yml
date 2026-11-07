@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: HYGON-AI/quality-gate
-          ref: 69e30c0fe0eb4055706a883d6008f89c6fb781cb
+          ref: c47afdb16aa5bdffc1524ffd12afe9a6277c1fb1
           persist-credentials: false
       - name: Execute repository fixture only in uncredentialed compute
         env:
