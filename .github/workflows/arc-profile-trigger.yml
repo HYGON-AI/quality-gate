@@ -16,4 +16,4 @@ jobs:
       model: bw1100
       image: pytorch-dtk26.04
       script: ci/arc-profile.sh
-      mode: orphan
+      mode: success
