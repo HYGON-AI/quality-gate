@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   native:
-    uses: HYGON-AI/quality-gate/.github/workflows/arc-native-accept.yml@74d251ee35d7769403c075c273500b29bb7e5fce
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-native-accept.yml@b8d4c8f108aea09b173abd78ce53e813a09bea02
     with:
       cards: 1
       mode: success
