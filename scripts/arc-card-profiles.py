@@ -122,6 +122,10 @@ def main():
                 log=base.store_logs(dest,p['metadata']['name']);logs[rank]=log
                 markers=[json.loads(l[len('PROFILE_RESULT '):]) for l in log.splitlines() if l.startswith('PROFILE_RESULT ')]
                 ranks[rank]=markers[-1] if markers else None
+                if markers:
+                    assert markers[-1]['node']==node and markers[-1]['node_rank']==int(rank),'reported node/rank does not match actual Pod'
+                    assert json.loads((dest/'report.json').read_text())==markers[-1],'report/log mismatch'
+                    assert all((dest/f).exists() for f in ['junit.xml','libaxpy.so','build.txt','repository-tests.txt']),'missing CI artifacts'
                 term=next((c['state'].get('terminated') for c in p['status'].get('containerStatuses',[]) if c['name']=='compute'),None)
                 if term:terms.append(term)
             phase=job.get('status',{}).get('state',{}).get('phase');summary.update(phase=phase,ranks=ranks)
