@@ -9,6 +9,9 @@ NS='github-ci-arc-pair';QUEUE='arc-pair'
 OUT='arc-pair';MARKER='PAIR_RESULT '
 PAIRS={'nmz3-nmz4':('github-nmz3','github-nmz4'),'nmz3-nmz6':('github-nmz3','github-nmz6'),'nmz4-nmz6':('github-nmz4','github-nmz6')}
 
+def ensure_window(now=None):
+ if (time.time() if now is None else now)>=calendar.timegm((2026,11,7,6,40,0)):raise RuntimeError('test submission window closed')
+
 def manifest(name,owner,pair,run_id,runner,payload):
  if pair not in PAIRS:raise ValueError('unapproved test pair')
  j=base.manifest(name,owner,'cpu',run_id,runner,payload)
@@ -39,7 +42,7 @@ def main():
  if pair=='cleanup-only':
   if own.exists():base.cleanup(json.loads(own.read_text()),run_id,runner)
   (out/'post-cleanup.json').write_text(json.dumps({'verified':True}));print('PAIR_CLEANUP_VERIFIED');return
- if time.time()>=calendar.timegm((2026,11,6,14,45,0)):raise RuntimeError('test submission window closed')
+ ensure_window()
  def interrupt(*_):raise KeyboardInterrupt()
  signal.signal(signal.SIGINT,interrupt);signal.signal(signal.SIGTERM,interrupt)
  owner=uuid.uuid4().hex;r={'name':'arc-e2e-'+owner[:16],'owner':owner,'uid':None};own.write_text(json.dumps(r))

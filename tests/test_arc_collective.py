@@ -4,6 +4,10 @@ ROOT=Path(__file__).parents[1]
 def load(name,path):
  s=importlib.util.spec_from_file_location(name,ROOT/path);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 class CollectiveTests(unittest.TestCase):
+ def test_resumed_submission_cutoff(self):
+  m=load('collective','scripts/arc-collective.py');cut=m.pair.calendar.timegm((2026,11,7,6,40,0))
+  m.pair.ensure_window(cut-1)
+  with self.assertRaises(RuntimeError):m.pair.ensure_window(cut)
  def test_bootstrap_allowlist_matches_real_payload(self):
   m=load('collective','scripts/arc-collective.py');m.pair.base.FILES += ('tests/fixtures/arc_e2e/run_collective.py',)
   payload,_=m.pair.base.bundle(ROOT);data=json.loads(gzip.decompress(base64.b64decode(payload)))

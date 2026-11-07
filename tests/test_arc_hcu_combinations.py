@@ -12,8 +12,8 @@ def child(slot,case,cards,start=10,end=45,minors=None):
 
 class CombinationTests(unittest.TestCase):
     def test_submission_cutoff(self):
-        m.ensure_window(0)
-        with self.assertRaises(RuntimeError):m.ensure_window(m.calendar.timegm((2026,11,6,14,45,0)))
+        cut=m.calendar.timegm((2026,11,7,6,40,0));m.ensure_window(cut-1)
+        with self.assertRaises(RuntimeError):m.ensure_window(cut)
 
     def test_fixed_plans_fit_budgets(self):
         for scenario,count in [('split4',2),('mixed',2),('gpu-queue',2),('cpu-queue',3)]:

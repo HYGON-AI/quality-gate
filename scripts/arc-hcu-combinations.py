@@ -10,7 +10,7 @@ def require(value,message):
     if not value:raise AssertionError(message)
 
 def ensure_window(now=None):
-    if (time.time() if now is None else now)>=calendar.timegm((2026,11,6,14,45,0)):raise RuntimeError('submission window closed')
+    if (time.time() if now is None else now)>=calendar.timegm((2026,11,7,6,40,0)):raise RuntimeError('submission window closed')
 
 def save_ownership(path,records):
     temporary=path.with_suffix('.tmp');temporary.write_text(json.dumps(records,indent=2));os.replace(temporary,path)
