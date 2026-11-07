@@ -1,0 +1,16 @@
+name: Controlled native ARC gap acceptance
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-native-trigger.yml]
+permissions:
+  contents: read
+concurrency:
+  group: native-arc-gap-acceptance
+  cancel-in-progress: false
+jobs:
+  native:
+    uses: HYGON-AI/quality-gate/.github/workflows/arc-native-accept.yml@74d251ee35d7769403c075c273500b29bb7e5fce
+    with:
+      cards: 1
+      mode: success
