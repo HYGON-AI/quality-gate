@@ -1,0 +1,18 @@
+name: Controlled card-count CI acceptance
+on:
+  push:
+    branches: [test/arc-platform-20261106]
+    paths: [.github/workflows/arc-profile-trigger.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-card-profile-acceptance
+  cancel-in-progress: false
+jobs:
+  profile:
+    uses: HYGON-AI/quality-gate/.github/workflows/ci-volcano.yml@a15d5232fb3b95015f4ce4fbd3b3d28b8b3bb01b
+    with:
+      cards: 0
+      model: bw1100
+      image: pytorch-dtk26.04
+      script: ci/arc-profile.sh
