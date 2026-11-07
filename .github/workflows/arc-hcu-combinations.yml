@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: HYGON-AI/quality-gate
-          ref: 68dcb2e9b14524b441676ca7ac9c372ef2beeb48
+          ref: 803fa7fa02337559a8621443fba63a8f1b0e8d99
           persist-credentials: false
       - name: Execute bounded multi-job compute probe
         env:

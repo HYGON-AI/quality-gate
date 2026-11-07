@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
         with:
           repository: HYGON-AI/quality-gate
-          ref: 1e5503456f316f3e9826f81c73af56847f50c912
+          ref: 803fa7fa02337559a8621443fba63a8f1b0e8d99
           persist-credentials: false
       - name: Compile test and validate two-rank collectives
         env:
