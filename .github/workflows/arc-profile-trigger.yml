@@ -12,7 +12,7 @@ jobs:
   profile:
     uses: HYGON-AI/quality-gate/.github/workflows/ci-volcano.yml@a15d5232fb3b95015f4ce4fbd3b3d28b8b3bb01b
     with:
-      cards: 1
+      cards: 16
       model: bw1100
       image: pytorch-dtk26.04
       script: ci/arc-profile.sh
