@@ -54,8 +54,10 @@ env:
     cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes
     echo "--- shm"
     df -h /dev/shm | tail -1
+    SHM_MB=$(df -m /dev/shm | tail -1 | awk '{print $2}')
+    echo "shm_mb=$SHM_MB"
     echo "--- devices"
-    ls -la /dev/kfd /dev/mkfd 2>&1 | head -4
+    ls -la /dev/kfd /dev/mkfd 2>&1 | head -4 || true
     ls /dev/dri 2>&1 | tr '\n' ' '; echo
     echo "--- shared storage"
     for d in /public /ci_public /public2; do
@@ -74,8 +76,11 @@ jobs:
         run: |
           set -euo pipefail
           eval "$PROBE"
-          echo "期望：0 卡，cpu limit 4，内存 8Gi，落在 build-capable=true 的节点"
-          test ! -e /dev/kfd && echo "OK 未分配卡" || echo "注意：CPU 池不应看到 /dev/kfd"
+          echo "期望：0 卡，cpu limit 4，内存 8Gi，shm 1Gi，落在 build-capable=true 的节点"
+          [ ! -e /dev/kfd ] || { echo "CPU 池不应看到 /dev/kfd"; exit 1; }
+          [ "$SHM_MB" -ge 900 ] || { echo "shm 太小: ${SHM_MB}MB"; exit 1; }
+          [ -d /ci_public ] || { echo "/ci_public 未挂载"; exit 1; }
+          echo "OK 无卡 / shm ${SHM_MB}MB / ci_public 可见"
 
   # ------------------------------------------------------------------- 构建池
   build-pool:
@@ -89,7 +94,12 @@ jobs:
         run: |
           set -euo pipefail
           eval "$PROBE"
-          echo "期望：0 卡，cpu limit 32，内存 64Gi；本池 minRunners=0，本 job 触发了从 0 扩容"
+          echo "期望：0 卡，cpu limit 32，内存 64Gi，shm 8Gi；本池 minRunners=0，本 job 触发了从 0 扩容"
+          [ "$SHM_MB" -ge 7500 ] || { echo "shm 太小: ${SHM_MB}MB"; exit 1; }
+          for d in /ci_public /public /public4; do
+            [ -d "$d" ] || { echo "$d 未挂载"; exit 1; }
+          done
+          echo "OK shm ${SHM_MB}MB / 三个共享目录可见"
       - name: 按 limit 并行，不要按 nproc
         shell: bash
         run: |
@@ -114,7 +124,12 @@ jobs:
         run: |
           set -euo pipefail
           eval "$PROBE"
-          echo "期望：1 张卡，cpu limit 24，内存 96Gi，落在 hcu-health=ok 的节点（nmz4 / nmz6）"
+          echo "期望：1 张卡，cpu limit 24，内存 96Gi，shm 32Gi，落在 hcu-health=ok 的节点"
+          [ "$SHM_MB" -ge 30000 ] || { echo "shm 太小: ${SHM_MB}MB"; exit 1; }
+          for d in /ci_public /public /public4; do
+            [ -d "$d" ] || { echo "$d 未挂载"; exit 1; }
+          done
+          ls /opt/hyhal/lib >/dev/null 2>&1 && echo "OK /opt/hyhal 已由 device plugin 注入"             || { echo "缺少 /opt/hyhal"; exit 1; }
       - name: 确认拿到了卡
         shell: bash
         run: |
