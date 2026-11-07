@@ -14,7 +14,9 @@ jobs:
   native:
     if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && contains(fromJSON('[1,2,4,8]'), inputs.cards) && contains(fromJSON('["success","orphan"]'), inputs.mode)
     name: Native ${{ inputs.cards }}card (${{ inputs.mode }})
-    runs-on: ${{ format('hygon-native-accept-{0}card', inputs.cards) }}
+    runs-on:
+      group: ci-k8s
+      labels: ${{ format('hygon-native-accept-{0}card', inputs.cards) }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
