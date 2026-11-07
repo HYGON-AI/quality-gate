@@ -1,5 +1,5 @@
 name: Trigger controlled three-node ARC soak
-# Cancellation retry: operator observer is armed before this caller is pushed.
+# Recovery after controlled eight-card cancellation; let both children complete.
 on:
   push:
     branches: [test/arc-platform-20261106]
