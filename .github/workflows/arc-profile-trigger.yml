@@ -6,14 +6,14 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: arc-card-profile-acceptance
+  group: arc-card-profile-active-v2
   cancel-in-progress: false
 jobs:
   profile:
     uses: HYGON-AI/quality-gate/.github/workflows/ci-volcano.yml@fce69ac0f15b2609c5998791a5ae9d973c8972ce
     with:
-      cards: 16
+      cards: 0
       model: bw1100
       image: pytorch-dtk26.04
       script: ci/arc-profile.sh
-      mode: cancel
+      mode: success
