@@ -1,0 +1,52 @@
+name: Test-only card-count Volcano CI
+on:
+  workflow_call:
+    inputs:
+      cards:
+        type: number
+        required: true
+      model:
+        type: string
+        default: bw1100
+      image:
+        type: string
+        default: pytorch-dtk26.04
+      script:
+        type: string
+        default: ci/arc-profile.sh
+      mode:
+        type: string
+        default: success
+permissions:
+  contents: read
+jobs:
+  compute:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push'
+    name: Card profile ${{ inputs.cards }} (${{ inputs.mode }})
+    runs-on: hygon-k8s-dispatch
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 69e30c0fe0eb4055706a883d6008f89c6fb781cb
+          persist-credentials: false
+      - name: Execute repository fixture only in uncredentialed compute
+        env:
+          CI_CARDS: ${{ inputs.cards }}
+          CI_MODEL: ${{ inputs.model }}
+          CI_IMAGE: ${{ inputs.image }}
+          CI_SCRIPT: ${{ inputs.script }}
+          CI_MODE: ${{ inputs.mode }}
+        run: exec python3 scripts/arc-card-profiles.py "$CI_CARDS" --mode "$CI_MODE"
+      - name: Independently verify compute cleanup
+        if: always()
+        run: exec python3 scripts/arc-card-profiles.py cleanup-only
+      - name: Upload build compute reports and lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: arc-profile-${{ inputs.cards }}-${{ inputs.mode }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/arc-card-profiles
+          if-no-files-found: error
+          retention-days: 7
