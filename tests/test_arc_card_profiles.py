@@ -1,6 +1,8 @@
 import copy
 import importlib.util
 import unittest
+import tempfile,types,json
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -68,6 +70,28 @@ class CardProfilesTests(unittest.TestCase):
     def test_payload_and_worker_syntax(self):
         for file in ['tests/fixtures/arc_e2e/run_profile.py','tests/fixtures/arc_e2e/profile_worker.py']:
             compile((ROOT/file).read_text(),file,'exec')
+
+    def test_independent_cleanup_records_fallback_not_false_main_success(self):
+        m=load()
+        with tempfile.TemporaryDirectory() as d:
+            out=Path(d);(out/'summary.json').write_text(json.dumps({'run_id':'123','passed':False,'cleanup_verified':False,'error':'KeyboardInterrupt'}))
+            m.record_independent_cleanup(out,'123');s=json.loads((out/'summary.json').read_text())
+            self.assertFalse(s['passed']);self.assertFalse(s['main_cleanup_verified']);self.assertTrue(s['cleanup_verified'])
+            self.assertEqual(s['cleanup_path'],'independent_fallback');self.assertEqual(s['error'],'KeyboardInterrupt')
+            with self.assertRaises(AssertionError):m.record_independent_cleanup(out,'999')
+
+    def test_fault_hold_runs_every_allocated_device_before_ready_and_in_loop(self):
+        s=importlib.util.spec_from_file_location('profile_hold',ROOT/'tests/fixtures/arc_e2e/profile_hold.py')
+        h=importlib.util.module_from_spec(s);s.loader.exec_module(h);calls=[]
+        class Tensor:
+            def __matmul__(self,other):calls.append('kernel');return self
+            def all(self):return self
+            def item(self):return True
+        fake=types.SimpleNamespace(cuda=types.SimpleNamespace(device_count=lambda:2,synchronize=lambda i:calls.append(i)),set_num_threads=lambda n:None,randn=lambda *a,**kw:Tensor(),isfinite=lambda x:x)
+        with patch.dict('sys.modules',{'torch':fake}),patch.object(h.time,'monotonic',side_effect=[0,0,421]),patch('builtins.print') as output:
+            h.run(2,0)
+        self.assertEqual(calls.count('kernel'),4);self.assertEqual(calls.count(0),2);self.assertEqual(calls.count(1),2)
+        self.assertIn('"active_gpu_hold": true',output.call_args.args[0])
 
     def test_bootstrap_matches_real_bundle(self):
         import ast,base64,gzip,json

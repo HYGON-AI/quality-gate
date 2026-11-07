@@ -22,8 +22,10 @@ try:
         assert all(r['passed'] for r in reports)
         assert all(r['identities']==reports[0]['identities'] for r in reports)
         report.update(world_size=nodes*cards,rounds=10,all_reduce=True,all_gather=True,identities=reports[0]['identities'],transport='socket')
-    print('PROFILE_COMPUTE_READY '+json.dumps({'cards':cards,'node_rank':rank}),flush=True)
-    if mode in ['timeout','cancel','orphan']:time.sleep(420)
+    if mode in ['timeout','cancel','orphan']:
+        from profile_hold import run
+        run(cards,rank)
+    else:print('PROFILE_COMPUTE_READY '+json.dumps({'cards':cards,'node_rank':rank,'active_gpu_hold':False}),flush=True)
     assert mode!='failure','intentional card-profile assertion failure'
     report['passed']=True
 except BaseException as e:

@@ -9,7 +9,7 @@ def load(name,file):
 
 base=load('profiles_base','arc-ci-e2e.py');fleet=load('profiles_fleet','arc-hcu-soak.py')
 NS='github-ci-arc-profiles';QUEUE='arc-profiles';OUT='arc-card-profiles'
-FILES=base.FILES+('ci/arc-profile.sh','tests/fixtures/arc_e2e/run_profile.py','tests/fixtures/arc_e2e/profile_worker.py')
+FILES=base.FILES+('ci/arc-profile.sh','tests/fixtures/arc_e2e/run_profile.py','tests/fixtures/arc_e2e/profile_worker.py','tests/fixtures/arc_e2e/profile_hold.py')
 NODES=['github-nmz3','github-nmz4']
 
 def ensure_window(now=None):
@@ -84,6 +84,15 @@ def validate_results(cards,ranks,logs):
     assert len(nodes)==f['replicas']
     if f['replicas']==2:assert ranks['0']['identities']==ranks['1']['identities']
 
+def record_independent_cleanup(out,run_id):
+    path=out/'summary.json'
+    if path.exists():
+        s=json.loads(path.read_text());assert s['run_id']==run_id,'summary run mismatch'
+        s['main_cleanup_verified']=s.get('cleanup_verified',False)
+        s['cleanup_verified']=True;s['cleanup_path']='main_and_independent' if s['main_cleanup_verified'] else 'independent_fallback'
+        path.write_text(json.dumps(s,indent=2))
+    (out/'post-cleanup.json').write_text(json.dumps({'verified':True,'run_id':run_id}))
+
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('cards',choices=['0','1','2','4','8','16','cleanup-only'])
     ap.add_argument('--mode',choices=['success','failure','timeout','cancel','orphan'],default='success')
@@ -92,7 +101,7 @@ def main():
     base.NS=NS;out=Path(os.environ['RUNNER_TEMP'])/OUT;out.mkdir(exist_ok=True);own=out/'ownership.json';sp=out/'summary.json'
     if a.cards=='cleanup-only':
         if own.exists():base.cleanup(json.loads(own.read_text()),run_id,runner)
-        (out/'post-cleanup.json').write_text(json.dumps({'verified':True,'run_id':run_id}));return
+        record_independent_cleanup(out,run_id);return
     ensure_window();profile(a.cards,os.environ['CI_MODEL'],os.environ['CI_IMAGE'],os.environ['CI_SCRIPT'])
     assert not own.exists(),'ownership ledger already exists'
     r={'owner':uuid.uuid4().hex,'uid':None};r['name']='arc-e2e-'+r['owner'][:16];own.write_text(json.dumps(r))
