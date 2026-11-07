@@ -1,0 +1,160 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+#
+# 放置位置: HYGON-AI/quality-gate  分支 test/arc-pools
+# 路径:     .github/workflows/arc-pool-smoke.yml
+#
+# 用途：验证按「用途 × 卡数」划分的 ARC 池子端到端可用。
+#   1. 分流      —— 每个池的 runner 落到正确的节点
+#   2. 资源      —— CPU quota / 内存 / 卡 与池子定义一致
+#   3. 线程注入  —— 容器里 nproc 是整机核数，必须用 OMP_NUM_THREADS
+#   4. 设备      —— 卡池能看到 /dev/kfd、/dev/mkfd 和分配到的 renderD
+#   5. 扩缩容    —— 从 0 扩起、并发排队、用完回收
+#   6. 异常      —— 失败能正确传播
+#
+# 注意：当前 runner 镜像是 ghcr.io/actions/actions-runner:2.338.1，不含 DTK/torch。
+#       所以卡池这里只验证设备可见性，不跑 torch。生产要换成带 DTK 的 runner 镜像。
+
+name: ARC pool smoke (test branch only)
+
+on:
+  push:
+    branches: [test/arc-pools]
+    paths: ['.github/workflows/arc-pool-smoke.yml']
+  workflow_dispatch:
+    inputs:
+      include_failure_case:
+        description: 同时验证失败传播
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arc-pool-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 所有 job 共用的环境自检脚本
+  PROBE: |
+    echo "--- runner"
+    echo "runner_name=$RUNNER_NAME pod=$HOSTNAME"
+    echo "node=$(cat /etc/hostname 2>/dev/null)"
+    echo "--- cpu"
+    echo "nproc(整机口径)=$(nproc)"
+    echo "OMP_NUM_THREADS=${OMP_NUM_THREADS:-未注入}"
+    echo "MAX_JOBS=${MAX_JOBS:-未注入}"
+    if [ -f /sys/fs/cgroup/cpu.max ]; then
+      echo "cgroup v2 cpu.max=$(cat /sys/fs/cgroup/cpu.max)"
+    else
+      echo "cgroup v1 quota/period=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)/$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)"
+    fi
+    echo "--- memory"
+    cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes
+    echo "--- shm"
+    df -h /dev/shm | tail -1
+    echo "--- devices"
+    ls -la /dev/kfd /dev/mkfd 2>&1 | head -4
+    ls /dev/dri 2>&1 | tr '\n' ' '; echo
+    echo "--- shared storage"
+    for d in /public /ci_public /public2; do
+      [ -d "$d" ] && echo "$d 可见 $(df -h $d | tail -1 | awk '{print $4}') 可用" || echo "$d 未挂载"
+    done
+
+jobs:
+  # ---------------------------------------------------------------- CPU 门禁池
+  cpu-gate:
+    name: 1-CPU池 门禁
+    runs-on: hygon-cpu
+    timeout-minutes: 10
+    steps:
+      - name: 环境自检
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$PROBE"
+          echo "期望：0 卡，cpu limit 4，内存 8Gi，落在 build-capable=true 的节点"
+          test ! -e /dev/kfd && echo "OK 未分配卡" || echo "注意：CPU 池不应看到 /dev/kfd"
+
+  # ------------------------------------------------------------------- 构建池
+  build-pool:
+    name: 2-构建池 从0扩容
+    runs-on: hygon-build
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 环境自检
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$PROBE"
+          echo "期望：0 卡，cpu limit 32，内存 64Gi；本池 minRunners=0，本 job 触发了从 0 扩容"
+      - name: 按 limit 并行，不要按 nproc
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${MAX_JOBS:?模板未注入 MAX_JOBS，构建会按整机核数开线程然后被限流}"
+          echo "将用 -j ${MAX_JOBS} 而不是 -j $(nproc)"
+          time bash -c 'seq 1 "'"$MAX_JOBS"'" | xargs -P "'"$MAX_JOBS"'" -I{} sh -c "i=0; while [ \$i -lt 200000 ]; do i=\$((i+1)); done"'
+
+  # ------------------------------------------------------------ 单卡池 + 并发
+  hcu-single:
+    name: 3-单卡池 任务${{ matrix.task }}
+    runs-on: hygon-hcu-1card
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 6          # 故意超过池子上限 4，用来观察排队
+      matrix:
+        task: [1, 2, 3, 4, 5, 6]
+    steps:
+      - name: 环境自检
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$PROBE"
+          echo "期望：1 张卡，cpu limit 24，内存 96Gi，落在 hcu-health=ok 的节点（nmz4 / nmz6）"
+      - name: 确认拿到了卡
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kfd  || { echo "缺少 /dev/kfd"; exit 1; }
+          test -e /dev/mkfd || echo "注意：缺少 /dev/mkfd，旧 docker CI 有映射它的用法"
+          n=$(ls /dev/dri 2>/dev/null | grep -c '^renderD' || true)
+          echo "可见 renderD 数量=$n（单卡池应为 1）"
+          test "$n" -eq 1 || { echo "卡数不符"; exit 1; }
+      - name: 占住一会儿，观察并发与排队
+        shell: bash
+        run: sleep 90
+
+  # ------------------------------------------------------------------ 失败传播
+  failure-propagation:
+    name: 4-失败传播
+    runs-on: hygon-cpu
+    timeout-minutes: 10
+    if: inputs.include_failure_case
+    continue-on-error: true     # 本 job 故意失败，不让整个 run 变红
+    steps:
+      - name: 故意以 17 退出
+        shell: bash
+        run: |
+          echo "about to exit 17"
+          exit 17
+
+  # -------------------------------------------------------------------- 汇总
+  summary:
+    name: 5-汇总
+    needs: [cpu-gate, build-pool, hcu-single]
+    if: always()
+    runs-on: hygon-cpu
+    timeout-minutes: 10
+    steps:
+      - shell: bash
+        run: |
+          echo "cpu-gate   = ${{ needs.cpu-gate.result }}"
+          echo "build-pool = ${{ needs.build-pool.result }}"
+          echo "hcu-single = ${{ needs.hcu-single.result }}"
+          [ "${{ needs.cpu-gate.result }}" = success ] \
+            && [ "${{ needs.build-pool.result }}" = success ] \
+            && [ "${{ needs.hcu-single.result }}" = success ]
