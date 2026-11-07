@@ -10,9 +10,14 @@ concurrency:
   cancel-in-progress: false
 jobs:
   profile:
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        cards: [1, 2, 4, 8, 16]
     uses: HYGON-AI/quality-gate/.github/workflows/ci-volcano.yml@a15d5232fb3b95015f4ce4fbd3b3d28b8b3bb01b
     with:
-      cards: 0
+      cards: ${{ matrix.cards }}
       model: bw1100
       image: pytorch-dtk26.04
       script: ci/arc-profile.sh
