@@ -10,10 +10,35 @@ concurrency:
   cancel-in-progress: false
 jobs:
   profile:
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: invalid-card-count
+            cards: 3
+            model: bw1100
+            image: pytorch-dtk26.04
+            script: ci/arc-profile.sh
+          - scenario: unavailable-model
+            cards: 1
+            model: bw1000
+            image: pytorch-dtk26.04
+            script: ci/arc-profile.sh
+          - scenario: unapproved-image
+            cards: 2
+            model: bw1100
+            image: unapproved-image
+            script: ci/arc-profile.sh
+          - scenario: invalid-script-path
+            cards: 4
+            model: bw1100
+            image: pytorch-dtk26.04
+            script: ../../invalid.sh
     uses: HYGON-AI/quality-gate/.github/workflows/ci-volcano.yml@fce69ac0f15b2609c5998791a5ae9d973c8972ce
     with:
-      cards: 1
-      model: bw1100
-      image: pytorch-dtk26.04
-      script: ci/arc-profile.sh
+      cards: ${{ matrix.cards }}
+      model: ${{ matrix.model }}
+      image: ${{ matrix.image }}
+      script: ${{ matrix.script }}
       mode: success
