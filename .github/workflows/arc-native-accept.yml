@@ -1,0 +1,37 @@
+name: Native ARC real CI acceptance (test only)
+on:
+  workflow_call:
+    inputs:
+      cards:
+        type: number
+        required: true
+      mode:
+        type: string
+        default: success
+permissions:
+  contents: read
+jobs:
+  native:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-platform-20261106' && github.event_name == 'push' && contains(fromJSON('[1,2,4,8]'), inputs.cards) && contains(fromJSON('["success","orphan"]'), inputs.mode)
+    name: Native ${{ inputs.cards }}card (${{ inputs.mode }})
+    runs-on: ${{ format('hygon-native-accept-{0}card', inputs.cards) }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+        with:
+          repository: HYGON-AI/quality-gate
+          ref: 5d75121ef90c11cbbcb4c03c200d1f49791eddef
+          persist-credentials: false
+      - name: Real repository build and all allocated HCU calculation
+        env:
+          CI_CARDS: ${{ inputs.cards }}
+          CI_MODE: ${{ inputs.mode }}
+        run: python -u tests/fixtures/arc_e2e/native_accept.py
+      - name: Preserve native CI reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-arc-${{ inputs.cards }}card-${{ inputs.mode }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
