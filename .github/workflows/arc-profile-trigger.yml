@@ -10,8 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   profile:
-    if: false # Setup guard: no compute until new fault fixture is pinned and allowlisted.
-    uses: HYGON-AI/quality-gate/.github/workflows/ci-volcano.yml@a15d5232fb3b95015f4ce4fbd3b3d28b8b3bb01b
+    uses: HYGON-AI/quality-gate/.github/workflows/ci-volcano.yml@fce69ac0f15b2609c5998791a5ae9d973c8972ce
     with:
       cards: 16
       model: bw1100
