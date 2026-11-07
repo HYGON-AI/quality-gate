@@ -157,10 +157,37 @@ jobs:
           echo "about to exit 17"
           exit 17
 
+  # ---------------------------------------------- 仓库自带镜像（containerMode: kubernetes）
+  # 卡/CPU/内存/shm/存储由池子的 hook 模板给，镜像由仓库自己指定。
+  own-image:
+    name: 6-自带镜像 1卡
+    runs-on: hygon-bw1100-1card-k8s
+    timeout-minutes: 25
+    container:
+      image: 10.16.1.152:5000/jenkins/model_test_env/sglang:0.5.18-ubuntu22.04-dtk26041-py3.10-20261103-0633
+    steps:
+      - name: 确认用的是仓库自己的镜像且拿到了卡
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "--- 镜像自带内容（runner 镜像里没有这些）"
+          python -c "import torch,sys;print('torch',torch.__version__)"
+          ls -d /opt/dtk* 2>/dev/null || echo "无 /opt/dtk"
+          echo "--- 资源（来自 hook 模板，不是 workflow 写的）"
+          echo "nproc=$(nproc) OMP_NUM_THREADS=${OMP_NUM_THREADS:-未注入}"
+          cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || cat /sys/fs/cgroup/cpu.max
+          df -h /dev/shm | tail -1
+          echo "--- 卡"
+          n=$(ls /dev/dri 2>/dev/null | grep -c '^renderD' || true)
+          echo "renderD 数量=$n"; test "$n" -eq 1
+          python -c "import torch;print('device_count',torch.cuda.device_count());a=torch.randn(4096,4096,device='cuda:0',dtype=torch.bfloat16);print('matmul ok',(a@a).shape)"
+          echo "--- 共享存储"
+          for d in /ci_public /public; do [ -d "$d" ] && echo "$d 可见" || echo "$d 未挂载"; done
+
   # -------------------------------------------------------------------- 汇总
   summary:
     name: 5-汇总
-    needs: [cpu-gate, build-pool, hcu-single]
+    needs: [cpu-gate, build-pool, hcu-single, own-image]
     if: always()
     runs-on: hygon-cpu
     timeout-minutes: 10
@@ -170,6 +197,7 @@ jobs:
           echo "cpu-gate   = ${{ needs.cpu-gate.result }}"
           echo "build-pool = ${{ needs.build-pool.result }}"
           echo "hcu-single = ${{ needs.hcu-single.result }}"
+          echo "own-image  = ${{ needs.own-image.result }}"
           [ "${{ needs.cpu-gate.result }}" = success ] \
             && [ "${{ needs.build-pool.result }}" = success ] \
             && [ "${{ needs.hcu-single.result }}" = success ]
