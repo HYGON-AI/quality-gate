@@ -58,7 +58,7 @@ env:
     echo "shm_mb=$SHM_MB"
     echo "--- devices"
     ls -la /dev/kfd /dev/mkfd 2>&1 | head -4 || true
-    ls /dev/dri 2>&1 | tr '\n' ' '; echo
+    echo "dri: $(ls /dev/dri 2>/dev/null || true)"
     echo "--- shared storage"
     for d in /public /ci_public /public2; do
       [ -d "$d" ] && echo "$d 可见 $(df -h $d | tail -1 | awk '{print $4}') 可用" || echo "$d 未挂载"
