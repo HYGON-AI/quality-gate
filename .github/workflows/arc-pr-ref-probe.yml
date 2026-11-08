@@ -1,0 +1,15 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+# Probe: does a pull_request job (job_workflow_ref = refs/pull/N/merge) pass the ci-k8s workflow allowlist?
+name: ARC pull_request ref probe (test only)
+on:
+  pull_request:
+    branches: [test/arc-pr-base-20261108]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: hygon-cpu
+    timeout-minutes: 5
+    steps:
+      - run: echo "ref=${GITHUB_REF} workflow_ref=${GITHUB_WORKFLOW_REF} runner=${RUNNER_NAME}"
