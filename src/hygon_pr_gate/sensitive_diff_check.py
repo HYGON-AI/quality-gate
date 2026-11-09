@@ -398,6 +398,16 @@ def _hcu_truth_states(
     return _marker_truth_states(node, markers, "hcu")
 
 
+class _CandidateLimitExceeded(RuntimeError):
+    def __init__(self):
+        super().__init__('Python runtime analysis budget exceeded (candidates); scan invalid')
+
+
+# Distinct from [] (an unsupported/unknown expression) and any concrete value.
+# Never discard overflow into a partial candidate list or render it as text.
+_CANDIDATE_OVERFLOW = object()
+
+
 class _PythonRuntimeVisitor(ast.NodeVisitor):
     MAX_VALUES = 256
     MAX_STRING = 65536
@@ -447,7 +457,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
             key = (type(value), value)
             unique[key] = unique.get(key, frozenset()) | origins
             if len(unique) > self.MAX_VALUES:
-                raise RuntimeError('Python runtime analysis budget exceeded (candidates); scan invalid')
+                raise _CandidateLimitExceeded()
         return [(key[1], origins) for key, origins in unique.items()]
 
     def _merge(self, left, right):
@@ -460,9 +470,25 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
             # replaced, never mutated. An identical list already contains the
             # same bounded typed values and origins on both paths. Rebuilding
             # it at every join makes large unchanged environments quadratic.
-            merged[key] = (positive if positive is negative else
-                           self._bounded(itertools.chain(positive, negative)))
+            if positive is negative:
+                merged[key] = positive
+            elif positive is _CANDIDATE_OVERFLOW or negative is _CANDIDATE_OVERFLOW:
+                merged[key] = _CANDIDATE_OVERFLOW
+            else:
+                try:
+                    merged[key] = self._bounded(itertools.chain(positive, negative))
+                except _CandidateLimitExceeded:
+                    merged[key] = _CANDIDATE_OVERFLOW
         return merged
+
+    def _assignment_values(self, node):
+        # Kernel/code-generation names can have many combinations without ever
+        # reaching an output sink. Bound storage now, but fail closed if a later
+        # output expression needs the value. Other resource errors still raise.
+        try:
+            return self._values(node)
+        except _CandidateLimitExceeded:
+            return _CANDIDATE_OVERFLOW
 
     def _join(self, left, right):
         if len(left) + len(right) > self.MAX_STRING:
@@ -524,7 +550,10 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         if isinstance(node, ast.Constant):
             return self._bounded([(node.value, location)])
         if isinstance(node, ast.Name):
-            return self.values.get(node.id, [])
+            values = self.values.get(node.id, [])
+            if values is _CANDIDATE_OVERFLOW:
+                raise _CandidateLimitExceeded()
+            return values
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
             return self._addition_values(node, depth)
         if isinstance(node, ast.JoinedStr):
@@ -697,7 +726,7 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        values = self._values(node.value)
+        values = self._assignment_values(node.value)
         for target in node.targets:
             for name in _target_names(target):
                 self.values[name] = values if isinstance(target, ast.Name) else []
@@ -705,13 +734,13 @@ class _PythonRuntimeVisitor(ast.NodeVisitor):
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         for name in _target_names(node.target):
-            self.values[name] = self._values(node.value) if node.value is not None else []
+            self.values[name] = self._assignment_values(node.value) if node.value is not None else []
         self.generic_visit(node)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         if isinstance(node.target, ast.Name):
             expression = ast.BinOp(left=node.target, op=node.op, right=node.value)
-            self.values[node.target.id] = self._values(expression)
+            self.values[node.target.id] = self._assignment_values(expression)
         self.generic_visit(node)
 
 

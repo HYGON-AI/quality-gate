@@ -115,6 +115,7 @@ class RuntimeAdditionTests(unittest.TestCase):
 
     def test_long_additions_keep_candidate_limit(self):
         text = 'message = ' + ' + '.join(['""'] * 35 + ['left', 'right'])
+        text += '\nprint(message)\n'
         v = visitor(text)
         v.values['left'] = [('left%d_' % i, frozenset({1})) for i in range(21)]
         v.values['right'] = [('right%d' % i, frozenset({1})) for i in range(21)]

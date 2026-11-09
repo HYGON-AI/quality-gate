@@ -38,7 +38,13 @@ CASES = {
         + ''.join('value_%d = "constant"\n' % i for i in range(1300))
         + 'if condition: pass\n' * 200}, 0, '本检查通过'),
     'analysis-candidate-overflow': ({'demo.py': HEADER + 'value = "start"\n'
-        + ''.join('if condition: value = "v%d"\n' % i for i in range(300))}, 1, 'candidates'),
+        + ''.join('if condition: value = "v%d"\n' % i for i in range(300))
+        + 'print(value)\n'}, 1, 'candidates'),
+    'analysis-unused-candidates': ({'demo.py': HEADER + 'condition = False\nvalue = "start"\n'
+        + ''.join('if condition: value += "_v%d"\n' % i for i in range(12))}, 0, '本检查通过'),
+    'analysis-overflow-independent-output': ({'demo.py': HEADER + 'condition = False\nvalue = "start"\n'
+        + ''.join('if condition: value += "_v%d"\n' % i for i in range(12))
+        + 'print("am" + "d")\n'}, 0, 'AMD/XGMI'),
     'workflow-nested-map': ({'.github/workflows/configs/hcu-test-map.yaml':
         '{"version": 1, "jobs": {"test": {"isolate_generated_code": true}}}\n'}, 0, '本检查通过'),
     'workflow-nested-duplicate': ({'.github/workflows/configs/map.yaml':

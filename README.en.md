@@ -6,7 +6,12 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.10`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.11`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.11 defers candidate overflow for internal Python bindings such as generated
+kernel names. Reading an overflowed value at a runtime output still invalidates
+the scan; resource limits and file coverage are unchanged.
+See [release notes](docs/releases/v2.0.11.md).
 
 v2.0.10 reuses unchanged bounded branch values to improve analysis scaling,
 and checks only direct `.github/workflows/` YAML files as executable workflows.

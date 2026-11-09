@@ -39,6 +39,7 @@ class AnalysisBoundsTests(unittest.TestCase):
 
     def test_candidate_overflow_is_explicit(self):
         text = 'value = "start"\n' + ''.join('if cond: value = "v%d"\n' % i for i in range(300))
+        text += 'print(value)\n'
         with self.assertRaisesRegex(RuntimeError, 'budget'):
             visitor(text).visit(ast.parse(text))
 
@@ -71,6 +72,7 @@ class AnalysisBoundsTests(unittest.TestCase):
     def test_format_combinations_are_not_silently_truncated(self):
         text = 'x = "0"\n' + ''.join('if cond: x = "%d"\n' % i for i in range(20))
         text += 's = "{}-{}".format(x, x)\n'
+        text += 'print(s)\n'
         with self.assertRaisesRegex(RuntimeError, 'budget'):
             visitor(text).visit(ast.parse(text))
 
