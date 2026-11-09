@@ -71,6 +71,7 @@ class AnalysisScalingTests(unittest.TestCase):
 
     def test_changed_candidates_still_exhaust_limit(self):
         text = 'value = "start"\n' + ''.join('if condition: value = "v%d"\n' % i for i in range(300))
+        text += 'print(value)\n'
         with self.assertRaisesRegex(RuntimeError, 'candidates'):
             visitor(text).visit(ast.parse(text))
 
