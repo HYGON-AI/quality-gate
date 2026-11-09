@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+# Probe: pull_request_target jobs on the ARC pools (test branches only).
+name: ARC pull_request_target probe (test only)
+on:
+  pull_request_target:
+    branches: [test/arc-pr-base-20261108]
+permissions:
+  contents: read
+jobs:
+  cpu:
+    runs-on: hygon-cpu
+    timeout-minutes: 5
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: |
+          echo "event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF} sha=${GITHUB_SHA} runner=${RUNNER_NAME} head=$(git rev-parse HEAD)"
+          test "${GITHUB_EVENT_NAME}" = pull_request_target
+          test "${GITHUB_REF}" = refs/heads/test/arc-pr-base-20261108
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test ! -e .github/arc-accept/prt-probe-head.txt
+  card:
+    runs-on: hygon-bw1100-1card
+    timeout-minutes: 15
+    container: {image: '10.16.1.152:5000/jenkins/model_test_env/sglang:0.5.18-ubuntu22.04-dtk26041-py3.10-20261103-0633'}
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - run: |
+          echo "event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF} runner=${RUNNER_NAME} head=$(git rev-parse HEAD)"
+          test "${GITHUB_EVENT_NAME}" = pull_request_target
+          test "$(git rev-parse HEAD)" = "${HEAD_SHA}"
+          test -f .github/arc-accept/prt-probe-head.txt
+          test -s "${GITHUB_EVENT_PATH}"
+          python3 -c "import json,os;d=json.load(open(os.environ['GITHUB_EVENT_PATH']));n=d['pull_request']['number'];print('event pr',n);assert n==int(os.environ['PR_NUMBER'])"
+          ls /dev/dri | tee /tmp/dri; grep -c renderD /tmp/dri
