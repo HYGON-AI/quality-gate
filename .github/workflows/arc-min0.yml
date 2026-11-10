@@ -1,0 +1,36 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+# Cold-start acceptance after setting minRunners=0 on hygon-cpu and hygon-bw1100-1card (test branch only).
+name: ARC minRunners=0 acceptance (test branch only)
+on:
+  push:
+    branches: [test/arc-accept-20261108]
+    paths: [.github/workflows/arc-min0.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-accept
+  cancel-in-progress: false
+jobs:
+  cpu:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-accept-20261108'
+    runs-on: hygon-cpu
+    timeout-minutes: 10
+    steps:
+      - run: echo "runner=${RUNNER_NAME} nproc=$(nproc)"
+
+  cards:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-accept-20261108'
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [c1-a, c1-b]
+    name: cards (${{ matrix.name }})
+    runs-on: hygon-bw1100-1card
+    timeout-minutes: 40
+    container: {image: '10.16.1.152:5000/jenkins/model_test_env/sglang:0.5.18-ubuntu22.04-dtk26041-py3.10-20261103-0633'}
+    env: {ACCEPT_ROLE: card, EXPECTED_CARDS: '1', ACCEPT_NAME: '${{ matrix.name }}', HOLD_SECONDS: '30'}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - run: python3 tests/arc_accept/check.py
