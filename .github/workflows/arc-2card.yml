@@ -1,0 +1,47 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+# Acceptance for the hygon-bw1100-2card pool (test branch only): two 2-card jobs and two 1-card jobs at once.
+name: ARC 2-card acceptance (test branch only)
+on:
+  push:
+    branches: [test/arc-accept-20261108]
+    paths: [.github/workflows/arc-2card.yml]
+permissions:
+  contents: read
+concurrency:
+  group: arc-accept
+  cancel-in-progress: false
+jobs:
+  cards:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-accept-20261108'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: c2-a, cards: 2, cpus: 48, mem_gib: 192, shm_gib: 64}
+          - {name: c2-b, cards: 2, cpus: 48, mem_gib: 192, shm_gib: 64}
+          - {name: c1-a, cards: 1, cpus: 24, mem_gib: 96, shm_gib: 32}
+          - {name: c1-b, cards: 1, cpus: 24, mem_gib: 96, shm_gib: 32}
+    name: cards (${{ matrix.name }})
+    runs-on: hygon-bw1100-${{ matrix.cards }}card
+    timeout-minutes: 40
+    container: {image: '10.16.1.152:5000/jenkins/model_test_env/sglang:0.5.18-ubuntu22.04-dtk26041-py3.10-20261103-0633'}
+    env: {ACCEPT_ROLE: card, EXPECTED_CARDS: '${{ matrix.cards }}', ACCEPT_NAME: '${{ matrix.name }}', HOLD_SECONDS: '120'}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: resource limits
+        env: {CPUS: '${{ matrix.cpus }}', MEM_GIB: '${{ matrix.mem_gib }}', SHM_GIB: '${{ matrix.shm_gib }}'}
+        run: |
+          set -eu
+          mem=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+          shm=$(df -BG --output=size /dev/shm | tail -1 | tr -dc 0-9)
+          echo "node=${NODE_NAME} nproc=$(nproc) OMP=${OMP_NUM_THREADS} mem=${mem} shm=${shm}G renders=$(ls /dev/dri | grep -c renderD)"
+          test "$(nproc)" = "$CPUS"
+          test "$OMP_NUM_THREADS" = "$CPUS"
+          test "$mem" = "$((MEM_GIB * 1024 * 1024 * 1024))"
+          test "$shm" = "$SHM_GIB"
+      - run: python3 tests/arc_accept/check.py
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: {name: 'accept2-${{ matrix.name }}', path: accept-out/, retention-days: 7, if-no-files-found: error}
