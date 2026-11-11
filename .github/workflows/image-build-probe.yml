@@ -1,0 +1,63 @@
+# Copyright (c) 2026 Hygon Information Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
+# 验证宿主机 Runner（标签 hygon-image-build）是否可用：在线、标签/组匹配、docker/buildx、磁盘、仓库连通。
+# 只读，不建镜像、不推镜像。仅测试分支触发。
+name: image-build runner probe (test branch only)
+on:
+  push:
+    branches: [test/arc-accept-20261108]
+    paths: [.github/workflows/image-build-probe.yml]
+permissions:
+  contents: read
+concurrency:
+  group: image-build-probe
+  cancel-in-progress: true
+jobs:
+  probe:
+    if: github.repository == 'HYGON-AI/quality-gate' && github.ref == 'refs/heads/test/arc-accept-20261108'
+    runs-on:
+      group: ci-general
+      labels: [hygon-image-build]
+    timeout-minutes: 15
+    steps:
+      - name: Identity
+        run: |
+          echo "runner=$RUNNER_NAME"
+          hostname
+          id
+          uname -m
+          nproc
+          free -g | head -2
+
+      - name: Docker
+        run: |
+          docker version --format 'client={{.Client.Version}} server={{.Server.Version}}' || echo "DOCKER_CLIENT_FAIL"
+          docker info 2>/dev/null | grep -iE "Docker Root Dir|Storage Driver|Cgroup Driver|Server Version" || echo "DOCKER_INFO_FAIL"
+          docker buildx version || echo "BUILDX_FAIL"
+
+      - name: Disk
+        run: |
+          df -h / /data 2>/dev/null || df -h /
+          root=$(docker info 2>/dev/null | awk -F': ' '/Docker Root Dir/{print $2}')
+          echo "data_root=${root:-unknown}"
+          if [ -n "$root" ]; then df -h "$root"; fi
+          docker system df || true
+
+      - name: Registry reachability
+        run: |
+          python3 - <<'PY'
+          import socket, sys
+          for host, port in (("10.16.1.152", 5000),):
+              s = socket.socket(); s.settimeout(5)
+              try:
+                  s.connect((host, port)); print(f"{host}:{port} reachable")
+              except Exception as e:
+                  print(f"{host}:{port} FAIL {e}")
+              finally:
+                  s.close()
+          PY
+
+      - name: Notes
+        run: |
+          echo "本 job 只做只读检查；未执行 docker build/push，未清理任何镜像。"
+          echo "如需验证 push 权限，请在正式流程里用 docker/login-action 配凭据。"
