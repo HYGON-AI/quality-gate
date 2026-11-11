@@ -6,7 +6,11 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.11`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.12`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.12 removes Semgrep from PR checks. Code security now runs Gitleaks only;
+Python/JS/TS static security analysis is no longer provided. Other checks and
+scanner-failure blocking remain unchanged. See [release notes](docs/releases/v2.0.12.md).
 
 v2.0.11 defers candidate overflow for internal Python bindings such as generated
 kernel names. Reading an overflowed value at a runtime output still invalidates
@@ -73,7 +77,7 @@ Gitleaks findings are advisory and redacted; they do not block merging.
 | --- | --- |
 | Code compliance | <ol><li>Commit author, committer, email, and message fields</li><li>LICENSE/NOTICE/COPYING files, original copyright notices, and SPDX identifiers</li><li><code>THIRD_PARTY_NOTICES.md</code> changes</li><li>Organization and platform wording in newly added content</li></ol> |
 | Code quality | <ol><li>Unsafe symbolic links, abnormal paths, Git blobs, and large files</li><li>UTF-8 and abnormal characters</li><li>Python/YAML syntax and Workflow references</li><li>Ruff high-confidence rules</li><li>ShellCheck non-style diagnostics</li><li>actionlint Workflow validity</li><li>yamllint syntax and duplicate keys</li></ol> |
-| Code security | <ol><li>Gitleaks secret detection, redacted and advisory only</li><li>Semgrep Python/JS/TS findings remain advisory; C/C++ is not scanned</li></ol> |
+| Code security | Gitleaks secret detection, redacted and advisory only; no Semgrep static security scan |
 | All required checks | <ol><li>Aggregation of the preceding results</li><li>A single branch-protection check and Job Summary</li></ol> |
 
 Action and reusable workflow references in the target repository that are not
@@ -172,7 +176,8 @@ All scanner images, including Gitleaks, must be preloaded during runner provisio
 workflow never pulls images from the network. If an image is missing or its
 digest does not match the policy, the affected check returns `Invalid Scan`
 instead of silently passing. After provisioning or cleanup, validate each
-reference in the policy's `images` map with `docker image inspect`.
+Gitleaks, Ruff and quality-tools reference in the policy's `images` map with `docker image inspect`.
+The legacy Semgrep configuration is retained for diagnostics, not required by PR jobs.
 
 Before allowing untrusted pull requests in a public repository to use
 self-hosted runners, review GitHub's Fork Workflow approval settings.
@@ -190,7 +195,7 @@ PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 python3 -m compileall -q src tests
 ```
 
-After preinstalling the four policy-pinned Docker images, run:
+After preinstalling the three required images (Gitleaks, Ruff, quality-tools), run:
 
 ```bash
 PYTHONPATH=src .venv/bin/python tests/gitleaks_integration.py

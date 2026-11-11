@@ -30,7 +30,7 @@ EXPECTED_WORKFLOW_CHECKS = {
         "Code quality",
         "git-encoding,syntax-workflow,ruff,quality-tools",
     ),
-    "security-check": ("Code security", "gitleaks,semgrep"),
+    "security-check": ("Code security", "gitleaks"),
 }
 
 

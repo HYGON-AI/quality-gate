@@ -48,7 +48,8 @@ scanners:
       safe_marker_line_patterns:
         - '-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'
   semgrep:
-    enabled: true
+    # Historical parser fixtures only; not registered in the PR gate executor.
+    enabled: false
     cpp_simple_var_compatibility_advisory: true
     block_rule_ids: []
     advisory_rule_ids:
@@ -81,6 +82,7 @@ scanners:
 
 images:
   gitleaks: zricethezav/gitleaks@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4
+  # Legacy diagnostic helper only. Current PR jobs never inspect or run this image.
   semgrep: docker.xuanyuan.run/semgrep/semgrep@sha256:16783c52158c4c874576f53579b42b3e793210546e2dfac4c5e49e18038ac383
   ruff: ghcr.io/astral-sh/ruff@sha256:5bf3adee1d6552bf4dc8381391f0a68827effae9d277c54d6b8c1aa564c7915a
   quality_tools: hygon-quality-tools:1.0.0

@@ -32,17 +32,16 @@ NATIVE_CHECKS = {
     "compliance": scan_compliance,
     "sensitive-diff": scan_sensitive_diff,
 }
-EXTERNAL_CHECKS = ("gitleaks", "semgrep", "ruff", "quality-tools")
+EXTERNAL_CHECKS = ("gitleaks", "ruff", "quality-tools")
 ALL_CHECKS = tuple(NATIVE_CHECKS) + EXTERNAL_CHECKS
 
 CHECK_DISPLAY_NAMES = {
-    'gitleaks': ('Code security', '密钥与代码安全'),
+    'gitleaks': ('Code security', '密钥泄露检查'),
     "sensitive-diff": ("Sensitive Diff Text", "Sensitive Diff Text"),
     "identity": ("Commit Identity", "提交身份"),
     "git-encoding": ("File Integrity", "文件完整性"),
     "syntax-workflow": ("Workflow Integrity", "工作流完整性"),
     "compliance": ("License Compliance", "许可证合规"),
-    "semgrep": ("Code Security", "代码安全"),
     "ruff": ("Code Quality", "代码质量"),
     "quality-tools": ("Code Quality", "代码质量"),
 }
@@ -56,9 +55,9 @@ CHECK_GROUP_DISPLAY_NAMES = {
         "Code quality",
         "仓库完整性与代码质量",
     ),
-    ("gitleaks", "semgrep"): (
+    ("gitleaks",): (
         "Code security",
-        "密钥与代码安全",
+        "密钥泄露检查",
     ),
 }
 
