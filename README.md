@@ -5,7 +5,11 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 
 [English documentation](README.en.md)
 
-本文描述 `v2.0.11`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+本文描述 `v2.0.12`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+
+v2.0.12 从 PR 门禁移除 Semgrep；Code security 仅保留 Gitleaks 密钥检查。
+不再提供 Python/JS/TS 静态安全风险检查，不将未扫描解释为安全通过。
+其他质量、合规及扫描执行失败的阻断策略不变。见 [发布说明](docs/releases/v2.0.12.md)。
 
 v2.0.11 修复 Python 内核名称等内部变量的候选组合超限导致整次扫描无效的问题；
 超限值若被运行时输出读取，仍按扫描无效阻断，不提高资源上限或跳过文件。
@@ -63,7 +67,7 @@ Checks / All required checks
 | --- | --- |
 | Code compliance | <ol><li>Commit 作者、提交者、邮箱及提交信息</li><li>LICENSE/NOTICE/COPYING、原版权声明和 SPDX 标识</li><li><code>THIRD_PARTY_NOTICES.md</code> 变更</li><li>新增内容中的组织与平台表述</li></ol> |
 | Code quality | <ol><li>危险符号链接、异常路径、Git Blob 和大文件</li><li>UTF-8 编码及异常字符</li><li>Python/YAML 语法及 Workflow 引用</li><li>Ruff 高置信度规则</li><li>ShellCheck 非 style 诊断</li><li>actionlint Workflow 有效性</li><li>yamllint 语法与重复键</li></ol> |
-| Code security | <ol><li>Gitleaks 密钥泄露检测，仅提示且脱敏，不因命中阻断</li><li>Semgrep 仅扫描 Python/JS/TS，发现仅提示；C/C++ 不扫描</li></ol> |
+| Code security | Gitleaks 密钥泄露检测，仅提示且脱敏，不因命中阻断；不包含 Semgrep 静态安全扫描 |
 | All required checks | <ol><li>汇总前述检查结果</li><li>生成统一的分支保护检查项和 Job Summary</li></ol> |
 
 目标仓库中未固定到完整 Commit SHA 的 Action 和 reusable workflow 引用会被报告为
@@ -155,7 +159,8 @@ Docker 扫描器继续使用独立的资源限制。阶段日志帮助区分卡�
 
 所有扫描镜像（包括 Gitleaks）必须在 Runner 初始化阶段预装。PR 执行期间不会联网拉取镜像；镜像缺失
 或摘要不匹配时，相应检查会返回 `Invalid Scan`，不会静默通过。Runner 交付或清理后，
-应逐项使用 `docker image inspect` 核对策略 `images` 中的镜像引用。
+应逐项使用 `docker image inspect` 核对策略 `images` 中 Gitleaks、Ruff、quality-tools 的镜像引用。
+Semgrep 配置仅为历史诊断保留，不是当前 PR 门禁的运行依赖。
 
 公开仓库允许不受信任的 PR 使用自建 Runner 前，必须审查 GitHub 的 Fork Workflow
 审批设置。
@@ -173,7 +178,7 @@ PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 python3 -m compileall -q src tests
 ```
 
-预装策略中的四个 Docker 镜像后，再执行真实扫描器集成测试：
+预装 Gitleaks、Ruff、quality-tools 三个 Docker 镜像后，再执行真实扫描器集成测试（无需 Semgrep）：
 
 ```bash
 PYTHONPATH=src .venv/bin/python tests/gitleaks_integration.py

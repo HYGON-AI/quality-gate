@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  QUALITY_GATE_VERSION: v2.0.11
+  QUALITY_GATE_VERSION: v2.0.12
 
 jobs:
   incremental_check:
@@ -38,7 +38,7 @@ jobs:
 
           - check_id: security-check
             display_name: Code security
-            scanners: gitleaks,semgrep
+            scanners: gitleaks
 
     steps:
       - name: checkout-pr-head

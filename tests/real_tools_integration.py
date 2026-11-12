@@ -6,6 +6,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 from hygon_pr_gate.audit_pr import run_gate
 from hygon_pr_gate.header_notices import MIT_NOTICE, BSD_NOTICE, APACHE_NOTICE
 
@@ -68,7 +69,8 @@ CASES = {
     'yaml-later-error': ({'deploy.yaml': 'kind: Deployment\n---\nvalue: [broken\n'}, 2, 'YAML'),
     'clean': ({'demo.py': HEADER + 'print(len("amd"))\nassert True, len("amd")\n'}, 0, '本检查通过'),
     'wording': ({'demo.py': HEADER + 'print("{}".format("amd"))\nprint("\\namd")\n'}, 0, 'AMD/XGMI'),
-    'semgrep': ({'demo.py': HEADER + 'import subprocess\nsubprocess.run("echo hello", shell=True)\n'}, 0, '静态分析发现潜在安全问题'),
+    'semgrep-removed': ({'demo.py': HEADER + 'import subprocess\nsubprocess.run("echo hello", shell=True)\n'}, 0, '本检查通过'),
+    'unpacked-subscript': ({'demo.py': HEADER + 'def f(filt, _get_slice):\n    return filt[*(_get_slice(filt, ax) for ax in range(filt.ndim))]\n'}, 0, '本检查通过'),
     'ruff': ({'demo.py': HEADER + 'value = 0\ndef f():\n    print(value)\n    value = 1\n'}, 2, 'F823'),
     'shellcheck': ({'run.sh': '#!/bin/sh\n' + HEADER + 'echo "$undefined_variable"\n'}, 0, 'Shell 脚本存在风险问题'),
     'actionlint': ({'.github/workflows/check.yml': 'name: Test\non: push\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hello\n        invalid-key: true\n'}, 2, 'invalid-key'),
@@ -76,10 +78,10 @@ CASES = {
     'quality-incremental': ({'config.yml': 'key: one\nkey: two\nother: one\nother: two\n'}, 2, 'duplication of key "other"'),
     'lizard-removed': ({'demo.py': HEADER + 'def f(value):\n' + ''.join('    if value == %d:\n        value += 1\n' % i for i in range(30)) + '    return value\n'}, 0, '本检查通过'),
     'style-removed': ({'config.yml': 'list: [one,two]  \r\nlong: ' + 'x' * 180}, 0, '本检查通过'),
-    'cpp-excluded': ({'demo.cpp': HEADER.replace('#', '//') + 'void f() { system("echo hello"); }\n'}, 0, '无适用的 Python/JS/TS 变更'),
-    'cpp-python-mixed': ({'demo.cpp': 'invalid )() c++\n', 'demo.py': HEADER + 'import subprocess\nsubprocess.run("echo hello", shell=True)\n'}, 0, '静态分析发现潜在安全问题'),
-    'js-security': ({'demo.js': HEADER.replace('#', '//') + 'child_process.exec(input);\n'}, 0, '静态分析发现潜在安全问题'),
-    'ts-security': ({'demo.ts': HEADER.replace('#', '//') + 'child_process.exec(input);\n'}, 0, '静态分析发现潜在安全问题'),
+    'cpp-excluded': ({'demo.cpp': HEADER.replace('#', '//') + 'void f() { system("echo hello"); }\n'}, 0, '本检查通过'),
+    'cpp-python-mixed': ({'demo.cpp': 'invalid )() c++\n', 'demo.py': HEADER + 'import subprocess\nsubprocess.run("echo hello", shell=True)\n'}, 0, '本检查通过'),
+    'js-security-removed': ({'demo.js': HEADER.replace('#', '//') + 'child_process.exec(input);\n'}, 0, '本检查通过'),
+    'ts-security-removed': ({'demo.ts': HEADER.replace('#', '//') + 'child_process.exec(input);\n'}, 0, '本检查通过'),
     'failure-retains-blocker': ({'a.py': HEADER + 'import subprocess\nprint("amd")\nsubprocess.run("echo hello", shell=True)\n', 'z.py': HEADER + 'def broken(:\n'}, 1, '存在阻断问题；⚠️ 扫描无效'),
 }
 
@@ -92,7 +94,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     previous = args.output / 'results.json'
     results = json.loads(previous.read_text()) if args.cases and previous.exists() else []
-    with tempfile.TemporaryDirectory(prefix='gate-integration-') as temporary:
+    with patch('hygon_pr_gate.local_executor.LocalDockerExecutor._semgrep', side_effect=AssertionError('Semgrep must not run')), \
+         tempfile.TemporaryDirectory(prefix='gate-integration-') as temporary:
         for name, (files, expected, marker) in CASES.items():
             if args.cases and name not in args.cases:
                 continue
@@ -128,7 +131,8 @@ def main():
             if name == 'style-removed':
                 passed = passed and 'YAML 规范问题' not in text and 'ENCODING.CRLF' not in text
             if name == 'failure-retains-blocker':
-                passed = passed and '静态分析发现潜在安全问题' in text and 'z.py' in text
+                passed = passed and 'z.py' in text
+            passed = passed and 'Semgrep' not in text
             results.append({'case': name, 'exit': code, 'expected': expected, 'passed': passed})
             print(json.dumps(results[-1]), flush=True)
     (args.output / 'results.json').write_text(json.dumps(results, indent=2) + '\n')

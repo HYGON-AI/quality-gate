@@ -304,7 +304,7 @@ class LocalDockerExecutor:
         self,
         repo: Path,
         scope: Dict[str, Any],
-        scanner_names: Sequence[str] = ("gitleaks", "semgrep", "ruff", "quality-tools"),
+        scanner_names: Sequence[str] = ("gitleaks", "ruff", "quality-tools"),
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         current_head = git(repo, "rev-parse", "HEAD").stdout.decode().strip()
         if current_head != scope["head"]:
@@ -319,7 +319,6 @@ class LocalDockerExecutor:
             reports = Path(directory)
             scanners = {
                 'gitleaks': lambda: self._gitleaks(repo, scope, reports),
-                "semgrep": lambda: self._semgrep(repo, scope, reports, paths),
                 "ruff": lambda: self._ruff(repo, scope, reports, paths),
                 "quality-tools": lambda: self._quality_tools(repo, scope, reports, paths),
             }
