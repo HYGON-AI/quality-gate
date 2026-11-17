@@ -15,7 +15,8 @@ permissions:
 jobs:
   self-test:
     name: PR Gate Self Test
-    runs-on: ubuntu-latest
+    # Keep Python 3.9 available; do not follow hosted OS major upgrades.
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
