@@ -38,7 +38,7 @@ advisory:
     - hygon.python.subprocess-shell-true
 
 git:
-  max_text_scan_bytes: 4194304
+  max_text_scan_bytes: 16777216
   large_file_review_bytes: 10485760
   large_file_block_bytes: 52428800
   source_header_scan_lines: 100

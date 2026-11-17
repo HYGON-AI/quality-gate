@@ -91,6 +91,7 @@ class UniversalScopeTests(unittest.TestCase):
         self.assertRegex(status['detail'], 'demo.ipynb.*第 1 行.*JSON')
 
     def test_large_compiled_artifact_is_skipped_before_text_limit(self):
+        self.policy['git']['max_text_scan_bytes'] = 4194304
         scope = {'head': '1'*40, 'changes': [{'kind': 'A', 'path': 'lib.so'}], 'changed_lines': {}}
         with patch('hygon_pr_gate.sensitive_diff_check.read_blob', return_value=None), patch('hygon_pr_gate.sensitive_diff_check.blob_size', return_value=8000000), patch('hygon_pr_gate.sensitive_diff_check.read_blob_prefix', return_value=b'\x7fELF'):
             findings, status = scan_sensitive_diff(Path('/tmp'), scope, self.policy)

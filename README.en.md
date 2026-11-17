@@ -6,7 +6,12 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
-This document describes `v2.0.12`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.13`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.13 raises the active PR policy's per-file text scan limit from 4 MiB to
+16 MiB so medium-sized knowledge indexes are scanned in full. Oversized text
+still invalidates the scan; no files are exempted. Legacy v1.1 policy and
+large-file review/block thresholds are unchanged. See [release notes](docs/releases/v2.0.13.md).
 
 v2.0.12 removes Semgrep from PR checks. Code security now runs Gitleaks only;
 Python/JS/TS static security analysis is no longer provided. Other checks and
