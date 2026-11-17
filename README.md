@@ -5,7 +5,12 @@ HYGON Quality Gate 是面向 Pull Request（PR）的增量质量、安全与开�
 
 [English documentation](README.en.md)
 
-本文描述 `v2.0.12`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+本文描述 `v2.0.13`。固定版本标签保持不变，`stable` 是集中升级的滚动入口。
+
+v2.0.13 将当前 PR 策略的单文件文本扫描上限从 4 MiB 提升为 16 MiB，
+使知识索引等中型文本完整参与检查；不跳过超限文本，也不改变现有违规判定。
+16 MiB 以上文本仍按扫描无效处理。历史 v1.1 策略和大文件提示/阻断阈值不变。
+见 [发布说明](docs/releases/v2.0.13.md)。
 
 v2.0.12 从 PR 门禁移除 Semgrep；Code security 仅保留 Gitleaks 密钥检查。
 不再提供 Python/JS/TS 静态安全风险检查，不将未扫描解释为安全通过。
