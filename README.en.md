@@ -14,7 +14,9 @@ The gate never loads models, deserializes or extracts/executes these artifacts.
 Path, size and other checks remain unchanged. Renamed plain text is still
 scanned; unknown binaries and legacy pickle `.pt` remain Invalid Scan.
 
-This document describes `v2.0.13`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+This document describes `v2.0.14`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
+
+v2.0.14 fixes binary-artifact text-scan handling and the Python 3.9 CI environment; see [release notes](docs/releases/v2.0.14.md).
 
 v2.0.13 raises the active PR policy's per-file text scan limit from 4 MiB to
 16 MiB so medium-sized knowledge indexes are scanned in full. Oversized text
