@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from hygon_quality_security.models import finding, scanner_status
 
 from .git_scope import read_blob, blob_size, read_blob_prefix, mode
-from .artifacts import compiled_format
+from .artifacts import compiled_format, review_artifact_format
 
 
 MAX_SNIPPET_LENGTH = 180
@@ -1169,13 +1169,25 @@ def scan_sensitive_diff(
                 size = blob_size(repo, scope["head"], path)
                 if size is None:
                     raise ValueError("{}：目标提交中的 Git 对象不存在或无法读取".format(path))
-                kind = compiled_format(read_blob_prefix(repo, scope["head"], path))
-                if not kind:
+                prefix = read_blob_prefix(repo, scope["head"], path, limit=512)
+                kind = compiled_format(prefix)
+                artifact = review_artifact_format(path, prefix)
+                if not kind and not artifact:
                     if size > maximum:
                         raise ValueError("{}：文件大小 {} 字节超过内容检查上限 {} 字节".format(path, size, maximum))
                     raise ValueError("{}：Git 对象内容读取失败".format(path))
             else:
                 kind = compiled_format(data)
+                artifact = review_artifact_format(path, data)
+            if artifact:
+                add_finding(
+                    'SENSITIVE_DIFF.BINARY_ARTIFACT_REVIEW', path, 1,
+                    '二进制制品内容未扫描，需人工审核', artifact,
+                    '识别为{}；仅识别文件头，未验证内部内容或安全性。'.format(artifact),
+                    '人工核实来源、许可证及内部内容；不加载模型、不反序列化、不解压执行。路径、大小及其他门禁检查不变。',
+                )
+                skipped.append('{}：{}；内容未扫描，需人工审核'.format(path, artifact))
+                continue
             if kind:
                 skipped.append("{}：识别为{}，跳过源码文本和敏感输出检查；文件路径、大小和链接仍检查".format(path, kind))
                 continue

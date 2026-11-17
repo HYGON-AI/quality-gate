@@ -6,6 +6,14 @@ the commits, files, and changed lines introduced by a pull request.
 
 [中文文档](README.md)
 
+Binary artifacts: `.pt` with a ZIP header, `.tar` with a ustar header and
+checksum, and `.tgz` with a gzip header receive an explicit manual-review
+advisory instead of sensitive-text scanning. Contents are NOT scanned or
+certified safe/valid. Review provenance, licenses and contents separately.
+The gate never loads models, deserializes or extracts/executes these artifacts.
+Path, size and other checks remain unchanged. Renamed plain text is still
+scanned; unknown binaries and legacy pickle `.pt` remain Invalid Scan.
+
 This document describes `v2.0.13`. Release tags remain fixed; `stable` is the rolling upgrade entry point.
 
 v2.0.13 raises the active PR policy's per-file text scan limit from 4 MiB to
